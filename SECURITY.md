@@ -2,24 +2,24 @@
 
 ## Supported Versions
 
-Please see [Releases](https://github.com/ethereum/go-ethereum/releases). We recommend using the [most recently released version](https://github.com/ethereum/go-ethereum/releases/latest).
+Please see [Releases](https://github.com/seaskycheng/sdvn/releases). We recommend using the [most recently released version](https://github.com/seaskycheng/sdvn/releases/latest).
 
 ## Audit reports
 
-Audit reports are published in the `docs` folder: https://github.com/ethereum/go-ethereum/tree/master/docs/audits 
+Audit reports are published in the `docs` folder: https://github.com/seaskycheng/sdvn/tree/master/docs/audits 
 
 | Scope | Date | Report Link |
 | ------- | ------- | ----------- |
-| `geth` | 20170425 | [pdf](https://github.com/ethereum/go-ethereum/blob/master/docs/audits/2017-04-25_Geth-audit_Truesec.pdf) |
-| `clef` | 20180914 | [pdf](https://github.com/ethereum/go-ethereum/blob/master/docs/audits/2018-09-14_Clef-audit_NCC.pdf) |
+| `sdvn` | 20170425 | [pdf](https://github.com/seaskycheng/sdvn/blob/master/docs/audits/2017-04-25_sdvn-audit_Truesec.pdf) |
+| `clef` | 20180914 | [pdf](https://github.com/seaskycheng/sdvn/blob/master/docs/audits/2018-09-14_Clef-audit_NCC.pdf) |
 
 ## Reporting a Vulnerability
 
 **Please do not file a public ticket** mentioning the vulnerability.
 
-To find out how to disclose a vulnerability in Ethereum visit [https://bounty.ethereum.org](https://bounty.ethereum.org) or email bounty@ethereum.org. Please read the [disclosure page](https://github.com/ethereum/go-ethereum/security/advisories?state=published) for more information about publically disclosed security vulnerabilities.
+To find out how to disclose a vulnerability in sdvn visit [https://bounty.sdvn.org](https://bounty.sdvn.org) or email bounty@sdvn.org. Please read the [disclosure page](https://github.com/seaskycheng/sdvn/security/advisories?state=published) for more information about publically disclosed security vulnerabilities.
 
-Use the built-in `geth version-check` feature to check whether the software is affected by any known vulnerability. This command will fetch the latest [`vulnerabilities.json`](https://geth.ethereum.org/docs/vulnerabilities/vulnerabilities.json) file which contains known security vulnerabilities concerning `geth`, and cross-check the data against its own version number.
+Use the built-in `sdvn version-check` feature to check whether the software is affected by any known vulnerability. This command will fetch the latest [`vulnerabilities.json`](https://sdvn.org/docs/vulnerabilities/vulnerabilities.json) file which contains known security vulnerabilities concerning `sdvn`, and cross-check the data against its own version number.
 
 The following key may be used to communicate sensitive information to developers.
 

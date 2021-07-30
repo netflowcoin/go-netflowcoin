@@ -1,5 +1,5 @@
-// Copyright (c) 2013 Kyle Isom <kyle@tyrfingr.is>
-// Copyright (c) 2012 The Go Authors. All rights reserved.
+// Copyright (c) 2021 Kyle Isom <kyle@tyrfingr.is>
+// Copyright (c) 2021 The Go Authors. All rights reserved.
 //
 // Redistribution and use in source and binary forms, with or without
 // modification, are permitted provided that the following conditions are
@@ -39,7 +39,7 @@ import (
 	"math/big"
 	"testing"
 
-	"github.com/ethereum/go-ethereum/crypto"
+	"github.com/seaskycheng/sdvn/crypto"
 )
 
 func TestKDF(t *testing.T) {

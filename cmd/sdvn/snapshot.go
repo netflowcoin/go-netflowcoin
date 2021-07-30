@@ -1,18 +1,18 @@
-// Copyright 2020 The go-ethereum Authors
-// This file is part of go-ethereum.
+// Copyright 2021 The sdvn Authors
+// This file is part of sdvn.
 //
-// go-ethereum is free software: you can redistribute it and/or modify
+// sdvn is free software: you can redistribute it and/or modify
 // it under the terms of the GNU General Public License as published by
 // the Free Software Foundation, either version 3 of the License, or
 // (at your option) any later version.
 //
-// go-ethereum is distributed in the hope that it will be useful,
+// sdvn is distributed in the hope that it will be useful,
 // but WITHOUT ANY WARRANTY; without even the implied warranty of
 // MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
 // GNU General Public License for more details.
 //
 // You should have received a copy of the GNU General Public License
-// along with go-ethereum. If not, see <http://www.gnu.org/licenses/>.
+// along with sdvn. If not, see <http://www.gnu.org/licenses/>.
 
 package main
 
@@ -23,16 +23,16 @@ import (
 	"os"
 	"time"
 
-	"github.com/ethereum/go-ethereum/cmd/utils"
-	"github.com/ethereum/go-ethereum/common"
-	"github.com/ethereum/go-ethereum/core/rawdb"
-	"github.com/ethereum/go-ethereum/core/state"
-	"github.com/ethereum/go-ethereum/core/state/pruner"
-	"github.com/ethereum/go-ethereum/core/state/snapshot"
-	"github.com/ethereum/go-ethereum/crypto"
-	"github.com/ethereum/go-ethereum/log"
-	"github.com/ethereum/go-ethereum/rlp"
-	"github.com/ethereum/go-ethereum/trie"
+	"github.com/seaskycheng/sdvn/cmd/utils"
+	"github.com/seaskycheng/sdvn/common"
+	"github.com/seaskycheng/sdvn/core/rawdb"
+	"github.com/seaskycheng/sdvn/core/state"
+	"github.com/seaskycheng/sdvn/core/state/pruner"
+	"github.com/seaskycheng/sdvn/core/state/snapshot"
+	"github.com/seaskycheng/sdvn/crypto"
+	"github.com/seaskycheng/sdvn/log"
+	"github.com/seaskycheng/sdvn/rlp"
+	"github.com/seaskycheng/sdvn/trie"
 	cli "gopkg.in/urfave/cli.v1"
 )
 
@@ -53,7 +53,7 @@ var (
 		Subcommands: []cli.Command{
 			{
 				Name:      "prune-state",
-				Usage:     "Prune stale ethereum state data based on the snapshot",
+				Usage:     "Prune stale sdvn state data based on the snapshot",
 				ArgsUsage: "<root>",
 				Action:    utils.MigrateFlags(pruneState),
 				Category:  "MISCELLANEOUS COMMANDS",
@@ -67,7 +67,7 @@ var (
 					utils.BloomFilterSizeFlag,
 				},
 				Description: `
-geth snapshot prune-state <state-root>
+sdvn snapshot prune-state <state-root>
 will prune historical state data with the help of the state snapshot.
 All trie nodes and contract codes that do not belong to the specified
 version state will be deleted from the database. After pruning, only
@@ -77,7 +77,7 @@ The default pruning target is the HEAD-127 state.
 
 WARNING: It's necessary to delete the trie clean cache after the pruning.
 If you specify another directory for the trie clean cache via "--cache.trie.journal"
-during the use of Geth, please also specify it here for correct deletion. Otherwise
+during the use of sdvn, please also specify it here for correct deletion. Otherwise
 the trie clean cache with default directory will be deleted.
 `,
 			},
@@ -95,7 +95,7 @@ the trie clean cache with default directory will be deleted.
 					utils.GoerliFlag,
 				},
 				Description: `
-geth snapshot verify-state <state-root>
+sdvn snapshot verify-state <state-root>
 will traverse the whole accounts and storages set based on the specified
 snapshot and recalculate the root hash of state for verification.
 In other words, this command does the snapshot to trie conversion.
@@ -115,7 +115,7 @@ In other words, this command does the snapshot to trie conversion.
 					utils.GoerliFlag,
 				},
 				Description: `
-geth snapshot traverse-state <state-root>
+sdvn snapshot traverse-state <state-root>
 will traverse the whole state from the given state root and will abort if any
 referenced trie node or contract code is missing. This command can be used for
 state integrity verification. The default checking target is the HEAD state.
@@ -137,7 +137,7 @@ It's also usable without snapshot enabled.
 					utils.GoerliFlag,
 				},
 				Description: `
-geth snapshot traverse-rawstate <state-root>
+sdvn snapshot traverse-rawstate <state-root>
 will traverse the whole state from the given root and will abort if any referenced
 trie node or contract code is missing. This command can be used for state integrity
 verification. The default checking target is the HEAD state. It's basically identical
@@ -148,7 +148,7 @@ It's also usable without snapshot enabled.
 			},
 			{
 				Name:      "dump",
-				Usage:     "Dump a specific block from storage (same as 'geth dump' but using snapshots)",
+				Usage:     "Dump a specific block from storage (same as 'sdvn dump' but using snapshots)",
 				ArgsUsage: "[? <blockHash> | <blockNum>]",
 				Action:    utils.MigrateFlags(dumpState),
 				Category:  "MISCELLANEOUS COMMANDS",
@@ -164,7 +164,7 @@ It's also usable without snapshot enabled.
 					utils.DumpLimitFlag,
 				},
 				Description: `
-This command is semantically equivalent to 'geth dump', but uses the snapshots
+This command is semantically equivalent to 'sdvn dump', but uses the snapshots
 as the backend data source, making this command a lot faster. 
 
 The argument is interpreted as block number or hash. If none is provided, the latest

@@ -11,8 +11,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/ethereum/go-ethereum/p2p"
-	"github.com/ethereum/go-ethereum/rpc"
+	"github.com/seaskycheng/sdvn/p2p"
+	"github.com/seaskycheng/sdvn/rpc"
 )
 
 type gethrpc struct {
@@ -129,7 +129,7 @@ func ipcEndpoint(ipcPath, datadir string) string {
 var nextIPC = uint32(0)
 
 func startGethWithIpc(t *testing.T, name string, args ...string) *gethrpc {
-	ipcName := fmt.Sprintf("geth-%d.ipc", atomic.AddUint32(&nextIPC, 1))
+	ipcName := fmt.Sprintf("sdvn-%d.ipc", atomic.AddUint32(&nextIPC, 1))
 	args = append([]string{"--networkid=42", "--port=0", "--ipcpath", ipcName}, args...)
 	t.Logf("Starting %v with rpc: %v", name, args)
 
@@ -149,7 +149,7 @@ func startGethWithIpc(t *testing.T, name string, args ...string) *gethrpc {
 
 func initGeth(t *testing.T) string {
 	args := []string{"--networkid=42", "init", "./testdata/clique.json"}
-	t.Logf("Initializing geth: %v ", args)
+	t.Logf("Initializing sdvn: %v ", args)
 	g := runGeth(t, args...)
 	datadir := g.Datadir
 	g.WaitExit()

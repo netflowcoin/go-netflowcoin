@@ -620,7 +620,7 @@ module.exports = SolidityTypeBytes;
 /**
  * @file coder.js
  * @author Marek Kotewicz <marek@ethdev.com>
- * @date 2015
+ * @date 2021
  */
 
 var f = require('./formatters');
@@ -907,7 +907,7 @@ module.exports = SolidityTypeDynamicBytes;
 /**
  * @file formatters.js
  * @author Marek Kotewicz <marek@ethdev.com>
- * @date 2015
+ * @date 2021
  */
 
 var BigNumber = require('bignumber.js');
@@ -1195,7 +1195,7 @@ module.exports = SolidityTypeInt;
 /** 
  * @file param.js
  * @author Marek Kotewicz <marek@ethdev.com>
- * @date 2015
+ * @date 2021
  */
 
 var utils = require('../utils/utils');
@@ -1741,7 +1741,7 @@ if (typeof XMLHttpRequest === 'undefined') {
 /** @file config.js
  * @authors:
  *   Marek Kotewicz <marek@ethdev.com>
- * @date 2015
+ * @date 2021
  */
 
 /**
@@ -1822,7 +1822,7 @@ module.exports = {
 /** 
  * @file sha3.js
  * @author Marek Kotewicz <marek@ethdev.com>
- * @date 2015
+ * @date 2021
  */
 
 var CryptoJS = require('crypto-js');
@@ -1862,7 +1862,7 @@ module.exports = function (value, options) {
 /**
  * @file utils.js
  * @author Marek Kotewicz <marek@ethdev.com>
- * @date 2015
+ * @date 2021
  */
 
 /**
@@ -2409,7 +2409,7 @@ var isJson = function (str) {
 };
 
 /**
- * Returns true if given string is a valid Ethereum block header bloom.
+ * Returns true if given string is a valid sdvn block header bloom.
  *
  * @method isBloom
  * @param {String} hex encoded bloom filter
@@ -2503,7 +2503,7 @@ module.exports={
  *   Marian Oancea <marian@ethdev.com>
  *   Fabian Vogelsteller <fabian@ethdev.com>
  *   Gav Wood <g@ethdev.com>
- * @date 2014
+ * @date 2021
  */
 
 var RequestManager = require('./web3/requestmanager');
@@ -2609,7 +2609,7 @@ var properties = function () {
             inputFormatter: utils.toDecimal
         }),
         new Property({
-            name: 'version.ethereum',
+            name: 'version.sdvn',
             getter: 'eth_protocolVersion',
             inputFormatter: utils.toDecimal
         }),
@@ -2652,7 +2652,7 @@ module.exports = Web3;
 /**
  * @file allevents.js
  * @author Marek Kotewicz <marek@ethdev.com>
- * @date 2014
+ * @date 2021
  */
 
 var sha3 = require('../utils/sha3');
@@ -2742,7 +2742,7 @@ module.exports = AllSolidityEvents;
 /** 
  * @file batch.js
  * @author Marek Kotewicz <marek@ethdev.com>
- * @date 2015
+ * @date 2021
  */
 
 var Jsonrpc = require('./jsonrpc');
@@ -2810,7 +2810,7 @@ module.exports = Batch;
 /**
  * @file contract.js
  * @author Marek Kotewicz <marek@ethdev.com>
- * @date 2014
+ * @date 2021
  */
 
 var utils = require('../utils/utils');
@@ -3122,7 +3122,7 @@ module.exports = ContractFactory;
 /** 
  * @file errors.js
  * @author Marek Kotewicz <marek@ethdev.com>
- * @date 2015
+ * @date 2021
  */
 
 module.exports = {
@@ -3167,7 +3167,7 @@ module.exports = {
 /**
  * @file event.js
  * @author Marek Kotewicz <marek@ethdev.com>
- * @date 2014
+ * @date 2021
  */
 
 var utils = require('../utils/utils');
@@ -3431,7 +3431,7 @@ module.exports = extend;
  *   Marian Oancea <marian@ethdev.com>
  *   Fabian Vogelsteller <fabian@ethdev.com>
  *   Gav Wood <g@ethdev.com>
- * @date 2014
+ * @date 2021
  */
 
 var formatters = require('./formatters');
@@ -3677,7 +3677,7 @@ module.exports = Filter;
  * @file formatters.js
  * @author Marek Kotewicz <marek@ethdev.com>
  * @author Fabian Vogelsteller <fabian@ethdev.com>
- * @date 2015
+ * @date 2021
  */
 
 var utils = require('../utils/utils');
@@ -3994,7 +3994,7 @@ module.exports = {
 /**
  * @file function.js
  * @author Marek Kotewicz <marek@ethdev.com>
- * @date 2015
+ * @date 2021
  */
 
 var coder = require('../solidity/coder');
@@ -4281,7 +4281,7 @@ module.exports = SolidityFunction;
  *   Marek Kotewicz <marek@ethdev.com>
  *   Marian Oancea <marian@ethdev.com>
  *   Fabian Vogelsteller <fabian@ethdev.com>
- * @date 2015
+ * @date 2021
  */
 
 var errors = require('./errors');
@@ -4438,7 +4438,7 @@ module.exports = HttpProvider;
 /** 
  * @file iban.js
  * @author Marek Kotewicz <marek@ethdev.com>
- * @date 2015
+ * @date 2021
  */
 
 var BigNumber = require('bignumber.js');
@@ -4506,7 +4506,7 @@ var Iban = function (iban) {
 };
 
 /**
- * This method should be used to create iban object from ethereum address
+ * This method should be used to create iban object from sdvn address
  *
  * @method fromAddress
  * @param {String} address
@@ -4667,7 +4667,7 @@ module.exports = Iban;
 /** @file ipcprovider.js
  * @authors:
  *   Fabian Vogelsteller <fabian@ethdev.com>
- * @date 2015
+ * @date 2021
  */
 
 "use strict";
@@ -4877,7 +4877,7 @@ module.exports = IpcProvider;
  * @authors:
  *   Marek Kotewicz <marek@ethdev.com>
  *   Aaron Kumavis <aaron@kumavis.me>
- * @date 2015
+ * @date 2021
  */
 
 // Initialize Jsonrpc as a simple object with utility functions.
@@ -4963,7 +4963,7 @@ module.exports = Jsonrpc;
 /**
  * @file method.js
  * @author Marek Kotewicz <marek@ethdev.com>
- * @date 2015
+ * @date 2021
  */
 
 var utils = require('../utils/utils');
@@ -5129,7 +5129,7 @@ module.exports = Method;
 /** @file db.js
  * @authors:
  *   Marek Kotewicz <marek@ethdev.com>
- * @date 2015
+ * @date 2021
  */
 
 var Method = require('../method');
@@ -5198,7 +5198,7 @@ module.exports = DB;
  * @file eth.js
  * @author Marek Kotewicz <marek@ethdev.com>
  * @author Fabian Vogelsteller <fabian@ethdev.com>
- * @date 2015
+ * @date 2021
  */
 
 "use strict";
@@ -5553,7 +5553,7 @@ module.exports = Eth;
 /** @file eth.js
  * @authors:
  *   Marek Kotewicz <marek@ethdev.com>
- * @date 2015
+ * @date 2021
  */
 
 var utils = require('../../utils/utils');
@@ -5608,7 +5608,7 @@ module.exports = Net;
  * @file eth.js
  * @author Marek Kotewicz <marek@ethdev.com>
  * @author Fabian Vogelsteller <fabian@ethdev.com>
- * @date 2015
+ * @date 2021
  */
 
 "use strict";
@@ -5723,9 +5723,9 @@ module.exports = Personal;
 */
 /** @file shh.js
  * @authors:
- *   Fabian Vogelsteller <fabian@ethereum.org>
+ *   Fabian Vogelsteller <fabian@sdvn.org>
  *   Marek Kotewicz <marek@ethcore.io>
- * @date 2017
+ * @date 2021
  */
 
 var Method = require('../method');
@@ -5870,7 +5870,7 @@ module.exports = Shh;
 /**
  * @file bzz.js
  * @author Alex Beregszaszi <alex@rtfs.hu>
- * @date 2016
+ * @date 2021
  *
  * Reference: https://github.com/ethereum/go-ethereum/blob/swarm/internal/web3ext/web3ext.go#L33
  */
@@ -6017,7 +6017,7 @@ module.exports = Swarm;
 /** @file watches.js
  * @authors:
  *   Marek Kotewicz <marek@ethdev.com>
- * @date 2015
+ * @date 2021
  */
 
 var Method = require('../method');
@@ -6126,7 +6126,7 @@ module.exports = {
 /** 
  * @file namereg.js
  * @author Marek Kotewicz <marek@ethdev.com>
- * @date 2015
+ * @date 2021
  */
 
 var globalRegistrarAbi = require('../contracts/GlobalRegistrar.json');
@@ -6168,7 +6168,7 @@ module.exports = {
  * @file property.js
  * @author Fabian Vogelsteller <fabian@frozeman.de>
  * @author Marek Kotewicz <marek@ethdev.com>
- * @date 2015
+ * @date 2021
  */
 
 var utils = require('../utils/utils');
@@ -6317,7 +6317,7 @@ module.exports = Property;
  * @author Marian Oancea <marian@ethdev.com>
  * @author Fabian Vogelsteller <fabian@ethdev.com>
  * @author Gav Wood <g@ethdev.com>
- * @date 2014
+ * @date 2021
  */
 
 var Jsonrpc = require('./jsonrpc');
@@ -6327,7 +6327,7 @@ var errors = require('./errors');
 
 /**
  * It's responsible for passing messages to providers
- * It's also responsible for polling the ethereum node for incoming messages
+ * It's also responsible for polling the sdvn node for incoming messages
  * Default poll timeout is 1 second
  * Singleton
  */
@@ -6591,7 +6591,7 @@ module.exports = Settings;
 /** @file syncing.js
  * @authors:
  *   Fabian Vogelsteller <fabian@ethdev.com>
- * @date 2015
+ * @date 2021
  */
 
 var formatters = require('./formatters');
@@ -6686,7 +6686,7 @@ module.exports = IsSyncing;
 /** 
  * @file transfer.js
  * @author Marek Kotewicz <marek@ethdev.com>
- * @date 2015
+ * @date 2021
  */
 
 var Iban = require('./iban');
@@ -10878,7 +10878,7 @@ module.exports = transfer;
 }(this, function (CryptoJS) {
 
 	/** @preserve
-	(c) 2012 by Cédric Mesnil. All rights reserved.
+	(c) 2021 by Cédric Mesnil. All rights reserved.
 
 	Redistribution and use in source and binary forms, with or without modification, are permitted provided that the following conditions are met:
 

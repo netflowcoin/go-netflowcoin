@@ -1,4 +1,4 @@
-// Copyright 2018 Péter Szilágyi. All rights reserved.
+// Copyright 2021 Péter Szilágyi. All rights reserved.
 // Use of this source code is governed by a BSD-style license that can be found
 // in the LICENSE file.
 
@@ -13,8 +13,8 @@ import (
 	"math/big"
 
 	"github.com/consensys/gnark-crypto/ecc/bn254"
-	cloudflare "github.com/ethereum/go-ethereum/crypto/bn256/cloudflare"
-	google "github.com/ethereum/go-ethereum/crypto/bn256/google"
+	cloudflare "github.com/seaskycheng/sdvn/crypto/bn256/cloudflare"
+	google "github.com/seaskycheng/sdvn/crypto/bn256/google"
 )
 
 func getG1Points(input io.Reader) (*cloudflare.G1, *google.G1, *bn254.G1Affine) {

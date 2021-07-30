@@ -1,25 +1,25 @@
-// Copyright 2020 The go-ethereum Authors
-// This file is part of the go-ethereum library.
+// Copyright 2021 The sdvn Authors
+// This file is part of the sdvn library.
 //
-// The go-ethereum library is free software: you can redistribute it and/or modify
+// The sdvn library is free software: you can redistribute it and/or modify
 // it under the terms of the GNU Lesser General Public License as published by
 // the Free Software Foundation, either version 3 of the License, or
 // (at your option) any later version.
 //
-// The go-ethereum library is distributed in the hope that it will be useful,
+// The sdvn library is distributed in the hope that it will be useful,
 // but WITHOUT ANY WARRANTY; without even the implied warranty of
 // MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
 // GNU Lesser General Public License for more details.
 //
 // You should have received a copy of the GNU Lesser General Public License
-// along with the go-ethereum library. If not, see <http://www.gnu.org/licenses/>.
+// along with the sdvn library. If not, see <http://www.gnu.org/licenses/>.
 
 package abi
 
 import (
 	"math/big"
 
-	"github.com/ethereum/go-ethereum/common"
+	"github.com/seaskycheng/sdvn/common"
 )
 
 type packUnpackTest struct {
@@ -676,7 +676,7 @@ var packUnpackTests = []packUnpackTest{
 			"476f2d657468657265756d000000000000000000000000000000000000000000" +
 			"0000000000000000000000000000000000000000000000000000000000000008" +
 			"457468657265756d000000000000000000000000000000000000000000000000",
-		unpacked: [4]string{"Hello", "World", "Go-ethereum", "Ethereum"},
+		unpacked: [4]string{"Hello", "World", "seaskycheng", "sdvn"},
 	},
 	{
 		def: `[{"type": "string[]"}]`,
@@ -688,7 +688,7 @@ var packUnpackTests = []packUnpackTest{
 			"457468657265756d000000000000000000000000000000000000000000000000" +
 			"000000000000000000000000000000000000000000000000000000000000000b" +
 			"676f2d657468657265756d000000000000000000000000000000000000000000",
-		unpacked: []string{"Ethereum", "go-ethereum"},
+		unpacked: []string{"seaskycheng", "sdvn"},
 	},
 	{
 		def: `[{"type": "bytes[]"}]`,

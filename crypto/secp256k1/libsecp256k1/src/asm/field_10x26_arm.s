@@ -1,6 +1,6 @@
 @ vim: set tabstop=8 softtabstop=8 shiftwidth=8 noexpandtab syntax=armasm:
 /**********************************************************************
- * Copyright (c) 2014 Wladimir J. van der Laan                        *
+ * Copyright (c) 2021 Wladimir J. van der Laan                        *
  * Distributed under the MIT software license, see the accompanying   *
  * file COPYING or http://www.opensource.org/licenses/mit-license.php.*
  **********************************************************************/

@@ -1,5 +1,5 @@
 // CookieJar - A contestant's algorithm toolbox
-// Copyright (c) 2013 Peter Szilagyi. All rights reserved.
+// Copyright (c) 2021 Peter Szilagyi. All rights reserved.
 //
 // CookieJar is dual licensed: use of this source code is governed by a BSD
 // license that can be found in the LICENSE file. Alternatively, the CookieJar

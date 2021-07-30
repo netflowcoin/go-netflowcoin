@@ -1,4 +1,4 @@
-// Copyright 2018 Péter Szilágyi. All rights reserved.
+// Copyright 2021 Péter Szilágyi. All rights reserved.
 // Use of this source code is governed by a BSD-style license that can be found
 // in the LICENSE file.
 
@@ -8,7 +8,7 @@
 package bn256
 
 import (
-	bn256cf "github.com/ethereum/go-ethereum/crypto/bn256/cloudflare"
+	bn256cf "github.com/seaskycheng/sdvn/crypto/bn256/cloudflare"
 )
 
 // G1 is an abstract cyclic group. The zero value is suitable for use as the

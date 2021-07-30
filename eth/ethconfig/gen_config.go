@@ -5,13 +5,13 @@ package ethconfig
 import (
 	"time"
 
-	"github.com/ethereum/go-ethereum/common"
-	"github.com/ethereum/go-ethereum/consensus/ethash"
-	"github.com/ethereum/go-ethereum/core"
-	"github.com/ethereum/go-ethereum/eth/downloader"
-	"github.com/ethereum/go-ethereum/eth/gasprice"
-	"github.com/ethereum/go-ethereum/miner"
-	"github.com/ethereum/go-ethereum/params"
+	"github.com/seaskycheng/sdvn/common"
+	"github.com/seaskycheng/sdvn/consensus/ethash"
+	"github.com/seaskycheng/sdvn/core"
+	"github.com/seaskycheng/sdvn/eth/downloader"
+	"github.com/seaskycheng/sdvn/eth/gasprice"
+	"github.com/seaskycheng/sdvn/miner"
+	"github.com/seaskycheng/sdvn/params"
 )
 
 // MarshalTOML marshals as TOML.
