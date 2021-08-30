@@ -18,6 +18,7 @@ package main
 
 import (
 	"crypto/rand"
+	"github.com/seaskycheng/sdvn/common/hexutil"
 	"math/big"
 	"os"
 	"path/filepath"
@@ -50,7 +51,7 @@ func runMinimalGeth(t *testing.T, args ...string) *testgeth {
 // Tests that a node embedded within a console can be started up properly and
 // then terminated by closing the input stream.
 func TestConsoleWelcome(t *testing.T) {
-	coinbase := "0x8605cdbbdb6d264aa742e77020dcbc58fcdce182"
+	coinbase := hexutil.CustomHexPrefix + "8605cdbbdb6d264aa742e77020dcbc58fcdce182"
 
 	// Start a sdvn console, make sure it's cleaned up and terminate the console
 	geth := runMinimalGeth(t, "--miner.etherbase", coinbase, "console")
@@ -100,7 +101,8 @@ func TestAttachWelcome(t *testing.T) {
 	p := trulyRandInt(1024, 65533) // Yeah, sometimes this will fail, sorry :P
 	httpPort = strconv.Itoa(p)
 	wsPort = strconv.Itoa(p + 1)
-	geth := runMinimalGeth(t, "--miner.etherbase", "0x8605cdbbdb6d264aa742e77020dcbc58fcdce182",
+	coinbase := hexutil.CustomHexPrefix + "8605cdbbdb6d264aa742e77020dcbc58fcdce182"
+	geth := runMinimalGeth(t, "--miner.etherbase", coinbase,
 		"--ipcpath", ipc,
 		"--http", "--http.port", httpPort,
 		"--ws", "--ws.port", wsPort)

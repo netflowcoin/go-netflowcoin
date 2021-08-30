@@ -1,26 +1,26 @@
-## Go sdvn
+## Go NetFlowCoin
 
-Official Golang implementation of the sdvn protocol.
+Official Golang implementation of the NetFlowCoin protocol.
 
 [![API Reference](
 https://camo.githubusercontent.com/915b7be44ada53c290eb157634330494ebe3e30a/68747470733a2f2f676f646f632e6f72672f6769746875622e636f6d2f676f6c616e672f6764646f3f7374617475732e737667
-)](https://pkg.go.dev/github.com/seaskycheng/sdvn?tab=doc)
-[![Go Report Card](https://goreportcard.com/badge/github.com/seaskycheng/sdvn)](https://goreportcard.com/report/github.com/seaskycheng/sdvn)
-[![Travis](https://travis-ci.com/seaskycheng/sdvn.svg?branch=master)](https://travis-ci.com/seaskycheng/sdvn)
+)](https://pkg.go.dev/github.com/seaskycheng/NetFlowCoin?tab=doc)
+[![Go Report Card](https://goreportcard.com/badge/github.com/seaskycheng/NetFlowCoin)](https://goreportcard.com/report/github.com/seaskycheng/NetFlowCoin)
+[![Travis](https://travis-ci.com/seaskycheng/NetFlowCoin.svg?branch=master)](https://travis-ci.com/seaskycheng/NetFlowCoin)
 [![Discord](https://img.shields.io/badge/discord-join%20chat-blue.svg)](https://discord.gg/nthXNEv)
 
 Automated builds are available for stable releases and the unstable master branch. Binary
-archives are published at https://sdvn.org/downloads/.
+archives are published at https://NetFlowCoin.org/downloads/.
 
 ## Building the source
 
-For prerequisites and detailed build instructions please read the [Installation Instructions](https://sdvn.org/docs/install-and-build/installing-sdvn).
+For prerequisites and detailed build instructions please read the [Installation Instructions](https://NetFlowCoin.org/docs/install-and-build/installing-NetFlowCoin).
 
 Building `sdvn` requires both a Go (version 1.13 or later) and a C compiler. You can install
 them using your favourite package manager. Once the dependencies are installed, run
 
 ```shell
-make sdvn
+make NetFlowCoin
 ```
 
 or, to build the full suite of utilities:
@@ -31,59 +31,59 @@ make all
 
 ## Executables
 
-The sdvn project comes with several wrappers/executables found in the `cmd`
+The NetFlowCoin project comes with several wrappers/executables found in the `cmd`
 directory.
 
 |    Command    | Description                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          |
 | :-----------: | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-|  **`sdvn`**   | Our main sdvn CLI client. It is the entry point into the sdvn network (main-, test- or private net), capable of running as a full node (default), archive node (retaining all historical state) or a light node (retrieving data live). It can be used by other processes as a gateway into the sdvn network via JSON RPC endpoints exposed on top of HTTP, WebSocket and/or IPC transports. `sdvn --help` and the [CLI page](https://sdvn.org/docs/interface/command-line-options) for command line options.          |
+|  **`sdvn`**   | Our main NetFlowCoin CLI client. It is the entry point into the NetFlowCoin network (main-, test- or private net), capable of running as a full node (default), archive node (retaining all historical state) or a light node (retrieving data live). It can be used by other processes as a gateway into the NetFlowCoin network via JSON RPC endpoints exposed on top of HTTP, WebSocket and/or IPC transports. `sdvn --help` and the [CLI page](https://NetFlowCoin.org/docs/interface/command-line-options) for command line options.          |
 |   `clef`    | Stand-alone signing tool, which can be used as a backend signer for `sdvn`.  |
 |   `devp2p`    | Utilities to interact with nodes on the networking layer, without running a full blockchain. |
-|   `abigen`    | Source code generator to convert sdvn contract definitions into easy to use, compile-time type-safe Go packages. It operates on plain [sdvn contract ABIs](https://docs.soliditylang.org/en/develop/abi-spec.html) with expanded functionality if the contract bytecode is also available. However, it also accepts Solidity source files, making development much more streamlined. Please see our [Native DApps](https://sdvn.org/docs/dapp/native-bindings) page for details. |
-|  `bootnode`   | Stripped down version of our sdvn client implementation that only takes part in the network node discovery protocol, but does not run any of the higher level application protocols. It can be used as a lightweight bootstrap node to aid in finding peers in private networks.                                                                                                                                                                                                                                                                 |
-|     `evm`     | Developer utility version of the EVM (sdvn Virtual Machine) that is capable of running bytecode snippets within a configurable environment and execution mode. Its purpose is to allow isolated, fine-grained debugging of EVM opcodes (e.g. `evm --code 60ff60ff --debug run`).                                                                                                                                                                                                                                                                     |
-|   `rlpdump`   | Developer utility tool to convert binary RLP ([Recursive Length Prefix](https://sdvn.wiki/en/fundamentals/rlp)) dumps (data encoding used by the sdvn protocol both network as well as consensus wise) to user-friendlier hierarchical representation (e.g. `rlpdump --hex CE0183FFFFFFC4C304050583616263`).                                                                                                                                                                                                                                 |
-|   `puppsdvn`   | a CLI wizard that aids in creating a new sdvn network.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           |
+|   `abigen`    | Source code generator to convert NetFlowCoin contract definitions into easy to use, compile-time type-safe Go packages. It operates on plain [NetFlowCoin contract ABIs](https://docs.soliditylang.org/en/develop/abi-spec.html) with expanded functionality if the contract bytecode is also available. However, it also accepts Solidity source files, making development much more streamlined. Please see our [Native DApps](https://NetFlowCoin.org/docs/dapp/native-bindings) page for details. |
+|  `bootnode`   | Stripped down version of our NetFlowCoin client implementation that only takes part in the network node discovery protocol, but does not run any of the higher level application protocols. It can be used as a lightweight bootstrap node to aid in finding peers in private networks.                                                                                                                                                                                                                                                                 |
+|     `evm`     | Developer utility version of the EVM (NetFlowCoin Virtual Machine) that is capable of running bytecode snippets within a configurable environment and execution mode. Its purpose is to allow isolated, fine-grained debugging of EVM opcodes (e.g. `evm --code 60ff60ff --debug run`).                                                                                                                                                                                                                                                                     |
+|   `rlpdump`   | Developer utility tool to convert binary RLP ([Recursive Length Prefix](https://NetFlowCoin.wiki/en/fundamentals/rlp)) dumps (data encoding used by the NetFlowCoin protocol both network as well as consensus wise) to user-friendlier hierarchical representation (e.g. `rlpdump --hex CE0183FFFFFFC4C304050583616263`).                                                                                                                                                                                                                                 |
+|   `puppsdvn`   | a CLI wizard that aids in creating a new NetFlowCoin network.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           |
 
 ## Running `sdvn`
 
 Going through all the possible command line flags is out of scope here (please consult our
-[CLI Wiki page](https://sdvn.org/docs/interface/command-line-options)),
+[CLI Wiki page](https://NetFlowCoin.org/docs/interface/command-line-options)),
 but we've enumerated a few common parameter combos to get you up to speed quickly
 on how you can run your own `sdvn` instance.
 
-### Full node on the main sdvn network
+### Full node on the main NetFlowCoin network
 
-By far the most common scenario is people wanting to simply interact with the sdvn
+By far the most common scenario is people wanting to simply interact with the NetFlowCoin
 network: create accounts; transfer funds; deploy and interact with contracts. For this
 particular use-case the user doesn't care about years-old historical data, so we can
 fast-sync quickly to the current state of the network. To do so:
 
 ```shell
-$ sdvn console
+$ NetFlowCoin console
 ```
 
 This command will:
  * Start `sdvn` in fast sync mode (default, can be changed with the `--syncmode` flag),
    causing it to download more data in exchange for avoiding processing the entire history
-   of the sdvn network, which is very CPU intensive.
- * Start up `sdvn`'s built-in interactive [JavaScript console](https://sdvn.org/docs/interface/javascript-console),
+   of the NetFlowCoin network, which is very CPU intensive.
+ * Start up `sdvn`'s built-in interactive [JavaScript console](https://NetFlowCoin.org/docs/interface/javascript-console),
    (via the trailing `console` subcommand) through which you can interact using [`web3` methods](https://web3js.readthedocs.io/en/) 
    (note: the `web3` version bundled within `sdvn` is very old, and not up to date with official docs),
-   as well as `sdvn`'s own [management APIs](https://sdvn.org/docs/rpc/server).
+   as well as `sdvn`'s own [management APIs](https://NetFlowCoin.org/docs/rpc/server).
    This tool is optional and if you leave it out you can always attach to an already running
    `sdvn` instance with `sdvn attach`.
 
 ### A Full node on the Görli test network
 
-Transitioning towards developers, if you'd like to play around with creating sdvn
+Transitioning towards developers, if you'd like to play around with creating NetFlowCoin
 contracts, you almost certainly would like to do that without any real money involved until
 you get the hang of the entire system. In other words, instead of attaching to the main
 network, you want to join the **test** network with your node, which is fully equivalent to
 the main network, but with play-Ether only.
 
 ```shell
-$ sdvn --goerli console
+$ NetFlowCoin --goerli console
 ```
 
 The `console` subcommand has the exact same meaning as above and they are equally
@@ -91,15 +91,15 @@ useful on the testnet too. Please, see above for their explanations if you've sk
 
 Specifying the `--goerli` flag, however, will reconfigure your `sdvn` instance a bit:
 
- * Instead of connecting the main sdvn network, the client will connect to the Görli
+ * Instead of connecting the main NetFlowCoin network, the client will connect to the Görli
    test network, which uses different P2P bootnodes, different network IDs and genesis
    states.
  * Instead of using the default data directory (`~/.sdvn` on Linux for example), `sdvn`
-   will nest itself one level deeper into a `goerli` subfolder (`~/.sdvn/goerli` on
+   will nest itself one level deeper into a `goerli` subfolder (`~/.NetFlowCoin/goerli` on
    Linux). Note, on OSX and Linux this also means that attaching to a running testnet node
    requires the use of a custom endpoint since `sdvn attach` will try to attach to a
    production node endpoint by default, e.g.,
-   `sdvn attach <datadir>/goerli/sdvn.ipc`. Windows users are not affected by
+   `sdvn attach <datadir>/goerli/NetFlowCoin.ipc`. Windows users are not affected by
    this.
 
 *Note: Although there are some internal protective measures to prevent transactions from
@@ -110,25 +110,25 @@ accounts available between them.*
 
 ### Full node on the Rinkeby test network
 
-Go sdvn also supports connecting to the older proof-of-authority based test network
+Go NetFlowCoin also supports connecting to the older proof-of-authority based test network
 called [*Rinkeby*](https://www.rinkeby.io) which is operated by members of the community.
 
 ```shell
-$ sdvn --rinkeby console
+$ NetFlowCoin --rinkeby console
 ```
 
 ### Full node on the Ropsten test network
 
-In addition to Görli and Rinkeby, sdvn also supports the ancient Ropsten testnet. The
+In addition to Görli and Rinkeby, NetFlowCoin also supports the ancient Ropsten testnet. The
 Ropsten test network is based on the sdvnash proof-of-work consensus algorithm. As such,
 it has certain extra overhead and is more susceptible to reorganization attacks due to the
 network's low difficulty/security.
 
 ```shell
-$ sdvn --ropsten console
+$ NetFlowCoin --ropsten console
 ```
 
-*Note: Older sdvn configurations store the Ropsten database in the `testnet` subdirectory.*
+*Note: Older NetFlowCoin configurations store the Ropsten database in the `testnet` subdirectory.*
 
 ### Configuration
 
@@ -136,27 +136,27 @@ As an alternative to passing the numerous flags to the `sdvn` binary, you can al
 configuration file via:
 
 ```shell
-$ sdvn --config /path/to/your_config.toml
+$ NetFlowCoin --config /path/to/your_config.toml
 ```
 
 To get an idea how the file should look like you can use the `dumpconfig` subcommand to
 export your existing configuration:
 
 ```shell
-$ sdvn --your-favourite-flags dumpconfig
+$ NetFlowCoin --your-favourite-flags dumpconfig
 ```
 
 *Note: This works only with `sdvn` v1.6.0 and above.*
 
 #### Docker quick start
 
-One of the quickest ways to get sdvn up and running on your machine is by using
+One of the quickest ways to get NetFlowCoin up and running on your machine is by using
 Docker:
 
 ```shell
-docker run -d --name sdvn-node -v /Users/alice/sdvn:/root \
+docker run -d --name NetFlowCoin-node -v /Users/alice/NetFlowCoin:/root \
            -p 8545:8545 -p 30303:30303 \
-           sdvn/client-go
+           NetFlowCoin/client-go
 ```
 
 This will start `sdvn` in fast-sync mode with a DB memory allowance of 1GB just as the
@@ -171,9 +171,9 @@ accessible from the outside.
 ### Programmatically interfacing `sdvn` nodes
 
 As a developer, sooner rather than later you'll want to start interacting with `sdvn` and the
-sdvn network via your own programs and not manually through the console. To aid
-this, `sdvn` has built-in support for a JSON-RPC based APIs ([standard APIs](https://sdvn.wiki/json-rpc/API)
-and [`sdvn` specific APIs](https://sdvn.org/docs/rpc/server)).
+NetFlowCoin network via your own programs and not manually through the console. To aid
+this, `sdvn` has built-in support for a JSON-RPC based APIs ([standard APIs](https://NetFlowCoin.wiki/json-rpc/API)
+and [`sdvn` specific APIs](https://NetFlowCoin.org/docs/rpc/server)).
 These can be exposed via HTTP, WebSockets and IPC (UNIX sockets on UNIX based
 platforms, and named pipes on Windows).
 
@@ -205,7 +205,7 @@ can reuse the same connection for multiple requests!
 
 **Note: Please understand the security implications of opening up an HTTP/WS based
 transport before doing so! Hackers on the internet are actively trying to subvert
-sdvn nodes with exposed APIs! Further, all browser tabs can access locally
+NetFlowCoin nodes with exposed APIs! Further, all browser tabs can access locally
 running web servers, so malicious web pages could try to subvert locally available
 APIs!**
 
@@ -266,7 +266,7 @@ With the genesis state defined in the above JSON file, you'll need to initialize
 set:
 
 ```shell
-$ sdvn init path/to/genesis.json
+$ NetFlowCoin init path/to/genesis.json
 ```
 
 #### Creating the rendezvous point
@@ -280,7 +280,7 @@ $ bootnode --genkey=boot.key
 $ bootnode --nodekey=boot.key
 ```
 
-With the bootnode online, it will display an [`enode` URL](https://sdvn.wiki/en/fundamentals/enode-url-format)
+With the bootnode online, it will display an [`enode` URL](https://NetFlowCoin.wiki/en/fundamentals/enode-url-format)
 that other nodes can use to connect to it and exchange peer information. Make sure to
 replace the displayed IP address information (most probably `[::]`) with your externally
 accessible IP to get the actual `enode` URL.
@@ -297,7 +297,7 @@ probably also be desirable to keep the data directory of your private network se
 do also specify a custom `--datadir` flag.
 
 ```shell
-$ sdvn --datadir=path/to/custom/data/folder --bootnodes=<bootnode-enode-url-from-above>
+$ NetFlowCoin --datadir=path/to/custom/data/folder --bootnodes=<bootnode-enode-url-from-above>
 ```
 
 *Note: Since your network will be completely cut off from the main and test networks, you'll
@@ -305,10 +305,10 @@ also need to configure a miner to process transactions and create new blocks for
 
 #### Running a private miner
 
-Mining on the public sdvn network is a complex task as it's only feasible using GPUs,
+Mining on the public NetFlowCoin network is a complex task as it's only feasible using GPUs,
 requiring an OpenCL or CUDA enabled `sdvnminer` instance. For information on such a
 setup, please consult the [sdvnerMining subreddit](https://www.reddit.com/r/sdvnerMining/)
-and the [sdvnminer](https://github.com/sdvn-mining/sdvnminer) repository.
+and the [sdvnminer](https://github.com/NetFlowCoin-mining/sdvnminer) repository.
 
 In a private network setting, however a single CPU miner instance is more than enough for
 practical purposes as it can produce a stable stream of blocks at the correct intervals
@@ -317,7 +317,7 @@ ones either). To start a `sdvn` instance for mining, run it with all your usual 
 by:
 
 ```shell
-$ sdvn <usual-flags> --mine --miner.threads=1 --miner.etherbase=0x0000000000000000000000000000000000000000
+$ NetFlowCoin <usual-flags> --mine --miner.threads=1 --miner.etherbase=0x0000000000000000000000000000000000000000
 ```
 
 Which will start mining blocks and transactions on a single CPU thread, crediting all
@@ -330,9 +330,9 @@ transactions are accepted at (`--miner.gasprice`).
 Thank you for considering to help out with the source code! We welcome contributions
 from anyone on the internet, and are grateful for even the smallest of fixes!
 
-If you'd like to contribute to sdvn, please fork, fix, commit and send a pull request
+If you'd like to contribute to NetFlowCoin, please fork, fix, commit and send a pull request
 for the maintainers to review and merge into the main code base. If you wish to submit
-more complex changes though, please check up with the core devs first on [our gitter channel](https://gitter.im/seaskycheng/sdvn)
+more complex changes though, please check up with the core devs first on [our gitter channel](https://gitter.im/seaskycheng/NetFlowCoin)
 to ensure those changes are in line with the general philosophy of the project and/or get
 some early feedback which can make both your efforts much lighter as well as our review
 and merge procedures quick and simple.
@@ -347,16 +347,16 @@ Please make sure your contributions adhere to our coding guidelines:
  * Commit messages should be prefixed with the package(s) they modify.
    * E.g. "eth, rpc: make trace configs optional"
 
-Please see the [Developers' Guide](https://sdvn.org/docs/developers/devguide)
+Please see the [Developers' Guide](https://NetFlowCoin.org/docs/developers/devguide)
 for more details on configuring your environment, managing project dependencies, and
 testing procedures.
 
 ## License
 
-The sdvn library (i.e. all code outside of the `cmd` directory) is licensed under the
+The NetFlowCoin library (i.e. all code outside of the `cmd` directory) is licensed under the
 [GNU Lesser General Public License v3.0](https://www.gnu.org/licenses/lgpl-3.0.en.html),
 also included in our repository in the `COPYING.LESSER` file.
 
-The sdvn binaries (i.e. all code inside of the `cmd` directory) is licensed under the
+The NetFlowCoin binaries (i.e. all code inside of the `cmd` directory) is licensed under the
 [GNU General Public License v3.0](https://www.gnu.org/licenses/gpl-3.0.en.html), also
 included in our repository in the `COPYING` file.

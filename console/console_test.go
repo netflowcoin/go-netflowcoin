@@ -27,6 +27,7 @@ import (
 	"time"
 
 	"github.com/seaskycheng/sdvn/common"
+	"github.com/seaskycheng/sdvn/common/hexutil"
 	"github.com/seaskycheng/sdvn/consensus/ethash"
 	"github.com/seaskycheng/sdvn/console/prompt"
 	"github.com/seaskycheng/sdvn/core"
@@ -39,7 +40,7 @@ import (
 
 const (
 	testInstance = "console-tester"
-	testAddress  = "0x8605cdbbdb6d264aa742e77020dcbc58fcdce182"
+	testAddress  = hexutil.CustomHexPrefix + "8605cdbbdb6d264aa742e77020dcbc58fcdce182"
 )
 
 // hookedPrompter implements UserPrompter to simulate use input via channels.
