@@ -329,7 +329,7 @@ func isString(input []byte) bool {
 }
 
 func bytesHave0xPrefix(input []byte) bool {
-	return len(input) >= 2 && input[0] == '0' && (input[1] == 'x' || input[1] == 'X')
+	return len(input) >= 2 && ((input[0] == '0' || input[0] == 'N' || input[0] == 'n') && (input[1] == 'x' || input[1] == 'X'))
 }
 
 func checkText(input []byte, wantPrefix bool) ([]byte, error) {

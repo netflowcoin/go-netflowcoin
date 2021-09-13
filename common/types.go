@@ -123,7 +123,8 @@ func (h Hash) Format(s fmt.State, c rune) {
 
 // UnmarshalText parses a hash in hex syntax.
 func (h *Hash) UnmarshalText(input []byte) error {
-	return hexutil.UnmarshalFixedText("Hash", input, h[:])
+	s := hexutil.CPToHex(string(input))
+	return hexutil.UnmarshalFixedText("Hash", []byte(s), h[:])
 }
 
 // UnmarshalJSON parses a hash in hex syntax.
@@ -248,7 +249,7 @@ func (a Address) Hash() Hash { return BytesToHash(a[:]) }
 
 // Hex returns an EIP55-compliant hex string representation of the address.
 func (a Address) Hex() string {
-	s := "0x" + string(a.checksumHex())
+	s := string(a.checksumHex())
 	s = hexutil.HexToCP(s)
 	return s
 }
