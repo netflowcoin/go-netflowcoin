@@ -1,4 +1,10 @@
-20210707 seaskycheng V0.2
+20210917 seaskycheng V0.3.2
+         fix rpc nx bug
+20210908 seaskycheng V0.3.1
+         fix nx bug
+20210830 seaskycheng V0.3
+         change prefix from 0x to nx
+20210730 seaskycheng V0.2
          convert chain from ethereum to sdvn
 20210703 seaskycheng V0.1
          import go-ethereum 1.10.4
