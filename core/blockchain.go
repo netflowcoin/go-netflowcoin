@@ -20,6 +20,7 @@ package core
 import (
 	"errors"
 	"fmt"
+	"github.com/seaskycheng/sdvn/consensus/alien"
 	"io"
 	"math/big"
 	mrand "math/rand"
@@ -28,6 +29,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	lru "github.com/hashicorp/golang-lru"
 	"github.com/seaskycheng/sdvn/common"
 	"github.com/seaskycheng/sdvn/common/mclock"
 	"github.com/seaskycheng/sdvn/common/prque"
@@ -44,7 +46,6 @@ import (
 	"github.com/seaskycheng/sdvn/params"
 	"github.com/seaskycheng/sdvn/rlp"
 	"github.com/seaskycheng/sdvn/trie"
-	lru "github.com/hashicorp/golang-lru"
 )
 
 var (
@@ -255,6 +256,9 @@ func NewBlockChain(db ethdb.Database, cacheConfig *CacheConfig, chainConfig *par
 	if err != nil {
 		return nil, err
 	}
+	if alien, ok := bc.engine.(*alien.Alien); ok {
+		alien.ApplyGenesis(bc.hc, bc.hc.CurrentHeader().Root)
+	}
 	bc.genesisBlock = bc.GetBlockByNumber(0)
 	if bc.genesisBlock == nil {
 		return nil, ErrNoGenesis
@@ -339,7 +343,7 @@ func NewBlockChain(db ethdb.Database, cacheConfig *CacheConfig, chainConfig *par
 		}
 	}
 	// The first thing the node will do is reconstruct the verification data for
-	// the head block (ethash cache or clique voting snapshot). Might as well do
+	// the head block (ethash cache or alien and clique voting snapshot). Might as well do
 	// it in advance.
 	bc.engine.VerifyHeader(bc, bc.CurrentHeader(), true)
 
@@ -1789,13 +1793,13 @@ func (bc *BlockChain) insertChain(chain types.Blocks, verifySeals bool) (int, er
 			return it.index, ErrBlacklistedHash
 		}
 		// If the block is known (in the middle of the chain), it's a special case for
-		// Clique blocks where they can share state among each other, so importing an
+		// Alien or Clique blocks where they can share state among each other, so importing an
 		// older block might complete the state of the subsequent one. In this case,
 		// just skip the block (we already validated it once fully (and crashed), since
 		// its header and body was already in the database).
 		if err == ErrKnownBlock {
 			logger := log.Debug
-			if bc.chainConfig.Clique == nil {
+			if bc.chainConfig.Alien == nil && bc.chainConfig.Clique == nil {
 				logger = log.Warn
 			}
 			logger("Inserted known block", "number", block.Number(), "hash", block.Hash(),
@@ -1803,7 +1807,7 @@ func (bc *BlockChain) insertChain(chain types.Blocks, verifySeals bool) (int, er
 				"root", block.Root())
 
 			// Special case. Commit the empty receipt slice if we meet the known
-			// block in the middle. It can only happen in the clique chain. Whenever
+			// block in the middle. It can only happen in the alien or clique chain. Whenever
 			// we insert blocks via `insertSideChain`, we only commit `td`, `header`
 			// and `body` if it's non-existent. Since we don't have receipts without
 			// reexecution, so nothing to commit. But if the sidechain will be adpoted
@@ -1822,7 +1826,7 @@ func (bc *BlockChain) insertChain(chain types.Blocks, verifySeals bool) (int, er
 			stats.processed++
 
 			// We can assume that logs are empty here, since the only way for consecutive
-			// Clique blocks to have the same state is if there are no transactions.
+			// Alien or Clique blocks to have the same state is if there are no transactions.
 			lastCanon = block
 			continue
 		}

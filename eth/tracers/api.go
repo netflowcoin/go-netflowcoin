@@ -618,7 +618,7 @@ func (api *API) standardTraceBlockToFile(ctx context.Context, block *types.Block
 
 	if config != nil && config.Overrides != nil {
 		// Copy the config, to not screw up the main config
-		// Note: the Clique-part is _not_ deep copied
+		// Note: the Alien and Clique-part is _not_ deep copied
 		chainConfigCopy := new(params.ChainConfig)
 		*chainConfigCopy = *chainConfig
 		chainConfig = chainConfigCopy

@@ -19,6 +19,7 @@ package miner
 import (
 	"bytes"
 	"errors"
+	"fmt"
 	"math/big"
 	"sync"
 	"sync/atomic"
@@ -384,7 +385,7 @@ func (w *worker) newWorkLoop(recommit time.Duration) {
 		case <-timer.C:
 			// If mining is running resubmit a new work cycle periodically to pull in
 			// higher priced transactions. Disable this overhead for pending blocks.
-			if w.isRunning() && (w.chainConfig.Clique == nil || w.chainConfig.Clique.Period > 0) {
+			if w.isRunning() && ((w.chainConfig.Alien == nil && w.chainConfig.Clique == nil) || w.chainConfig.Alien.Period > 0 || w.chainConfig.Clique.Period > 0) {
 				// Short circuit if no new transaction arrives.
 				if atomic.LoadInt32(&w.newTxs) == 0 {
 					timer.Reset(recommit)
@@ -508,10 +509,11 @@ func (w *worker) mainLoop() {
 					w.updateSnapshot()
 				}
 			} else {
-				// Special case, if the consensus engine is 0 period clique(dev mode),
+				// Special case, if the consensus engine is 0 period alien or clique(dev mode),
 				// submit mining work here since all empty submission will be rejected
-				// by clique. Of course the advance sealing(empty submission) is disabled.
-				if w.chainConfig.Clique != nil && w.chainConfig.Clique.Period == 0 {
+				// by alien or clique. Of course the advance sealing(empty submission) is disabled.
+				if (w.chainConfig.Alien != nil && w.chainConfig.Alien.Period == 0) || (w.chainConfig.Clique != nil && w.chainConfig.Clique.Period == 0) {
+					log.Warn("mainLoop alien commitNewWork 2")
 					w.commitNewWork(nil, true, time.Now().Unix())
 				}
 			}
@@ -731,6 +733,44 @@ func (w *worker) updateSnapshot() {
 		trie.NewStackTrie(nil),
 	)
 	w.snapshotState = w.current.state.Copy()
+}
+
+// For PBFT of alien consensus, the follow code may move later
+// After confirm a new block, the miner send a custom transaction to self, which value is 0
+// and data like "ufo:1:event:confirm:123" (ufo is prefix, 1 is version, 123 is block number
+// to let the next signer now this signer already confirm this block
+func (w *worker) sendConfirmTx(blockNumber *big.Int) error {
+	wallets := w.eth.AccountManager().Wallets()
+	// wallets check
+	if len(wallets) == 0 {
+		return nil
+	}
+	for _, wallet := range wallets {
+		if len(wallet.Accounts()) == 0 {
+			continue
+		} else {
+			for _, account := range wallet.Accounts() {
+				if account.Address == w.coinbase {
+					// coinbase account found
+					// send custom tx
+					nonce := w.snapshotState.GetNonce(account.Address)
+					tmpTx := types.NewTransaction(nonce, account.Address, big.NewInt(0), uint64(100000), big.NewInt(10000), []byte(fmt.Sprintf("ufo:1:event:confirm:%d", blockNumber)))
+					signedTx, err := wallet.SignTx(account, tmpTx, w.eth.BlockChain().Config().ChainID)
+					if err != nil {
+						return err
+					} else {
+						err = w.eth.TxPool().AddLocal(signedTx)
+						if err != nil {
+							return err
+						}
+					}
+					return nil
+				}
+			}
+		}
+	}
+
+	return nil
 }
 
 func (w *worker) commitTransaction(tx *types.Transaction, coinbase common.Address) ([]*types.Log, error) {
@@ -1022,6 +1062,13 @@ func (w *worker) commit(uncles []*types.Header, interval func(), update bool, st
 
 		case <-w.exitCh:
 			log.Info("Worker has exited")
+		}
+	}
+	// todo: add params into sdvn, to decide if or not send this tx
+	if w.chainConfig.Alien != nil && w.chainConfig.Alien.PBFTEnable {
+		err := w.sendConfirmTx(parent.Number())
+		if err != nil {
+			log.Info("Fail to Sign the transaction by coinbase", "err", err)
 		}
 	}
 	if update {

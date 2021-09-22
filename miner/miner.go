@@ -32,12 +32,14 @@ import (
 	"github.com/seaskycheng/sdvn/event"
 	"github.com/seaskycheng/sdvn/log"
 	"github.com/seaskycheng/sdvn/params"
+	"github.com/seaskycheng/sdvn/accounts"
 )
 
 // Backend wraps all methods required for mining.
 type Backend interface {
 	BlockChain() *core.BlockChain
 	TxPool() *core.TxPool
+	AccountManager() *accounts.Manager
 }
 
 // Config is the configuration parameters of mining.

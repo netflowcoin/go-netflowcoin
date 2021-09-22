@@ -42,10 +42,7 @@ var AppHelpFlagGroups = []flags.FlagGroup{
 			utils.SmartCardDaemonPathFlag,
 			utils.NetworkIdFlag,
 			utils.MainnetFlag,
-			utils.GoerliFlag,
-			utils.RinkebyFlag,
-			utils.CalaverasFlag,
-			utils.RopstenFlag,
+			utils.TestnetFlag,
 			utils.SyncModeFlag,
 			utils.ExitWhenSyncedFlag,
 			utils.GCModeFlag,
@@ -217,6 +214,14 @@ var AppHelpFlagGroups = []flags.FlagGroup{
 	{
 		Name:  "METRICS AND STATS",
 		Flags: metricsFlags,
+	},
+	{
+		Name:  "PBFT",
+		Flags: pbftFlags,
+	},
+	{
+		Name:  "SIDE CHAIN FOR APP",
+		Flags: scaFlags,
 	},
 	{
 		Name: "ALIASED (deprecated)",

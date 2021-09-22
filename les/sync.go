@@ -181,7 +181,7 @@ func (h *clientHandler) synchronise(peer *serverPeer) {
 		// For the ethash consensus engine, the start header is the block header
 		// of the checkpoint.
 		//
-		// For the clique consensus engine, the start header is the block header
+		// For the alien and clique consensus engine, the start header is the block header
 		// of the latest epoch covered by checkpoint.
 		ctx, cancel := context.WithTimeout(context.Background(), time.Second*5)
 		defer cancel()

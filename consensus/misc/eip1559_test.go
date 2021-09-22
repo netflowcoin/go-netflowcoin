@@ -47,6 +47,7 @@ func copyConfig(original *params.ChainConfig) *params.ChainConfig {
 		EWASMBlock:          original.EWASMBlock,
 		CatalystBlock:       original.CatalystBlock,
 		Ethash:              original.Ethash,
+		Alien:               original.Alien,
 		Clique:              original.Clique,
 	}
 }

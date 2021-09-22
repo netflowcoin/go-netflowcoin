@@ -22,6 +22,7 @@ import (
 	"time"
 
 	"github.com/seaskycheng/sdvn/common"
+	"github.com/seaskycheng/sdvn/consensus/alien"
 	"github.com/seaskycheng/sdvn/consensus/clique"
 	"github.com/seaskycheng/sdvn/core"
 	"github.com/seaskycheng/sdvn/core/rawdb"
@@ -243,7 +244,10 @@ func createMiner(t *testing.T) (*Miner, *event.TypeMux) {
 		t.Fatalf("can't create new chain config: %v", err)
 	}
 	// Create consensus engine
-	engine := clique.New(chainConfig.Clique, chainDB)
+	if chainConfig.Alien != nil
+	    engine := alien.New(chainConfig.Alien, chainDB)
+	else
+	    engine := clique.New(chainConfig.Clique, chainDB)
 	// Create sdvn backend
 	bc, err := core.NewBlockChain(chainDB, nil, chainConfig, engine, vm.Config{}, nil, nil)
 	if err != nil {

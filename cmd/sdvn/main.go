@@ -19,6 +19,7 @@ package main
 
 import (
 	"fmt"
+	"math/rand"
 	"os"
 	"sort"
 	"strconv"
@@ -39,6 +40,8 @@ import (
 	"github.com/seaskycheng/sdvn/log"
 	"github.com/seaskycheng/sdvn/metrics"
 	"github.com/seaskycheng/sdvn/node"
+	"github.com/seaskycheng/sdvn/params"
+	"github.com/seaskycheng/sdvn/rpc"
 	"gopkg.in/urfave/cli.v1"
 )
 
@@ -135,10 +138,7 @@ var (
 		utils.MainnetFlag,
 		utils.DeveloperFlag,
 		utils.DeveloperPeriodFlag,
-		utils.RopstenFlag,
-		utils.RinkebyFlag,
-		utils.GoerliFlag,
-		utils.CalaverasFlag,
+		utils.TestnetFlag,
 		utils.VMEnableDebugFlag,
 		utils.NetworkIdFlag,
 		utils.EthStatsURLFlag,
@@ -198,6 +198,17 @@ var (
 		utils.MetricsInfluxDBPasswordFlag,
 		utils.MetricsInfluxDBTagsFlag,
 	}
+
+	pbftFlags = []cli.Flag{
+		utils.PBFTEnableFlag,
+	}
+
+	scaFlags = []cli.Flag{
+		utils.SCAEnableFlag,
+		utils.SCAMainRPCAddrFlag,
+		utils.SCAMainRPCPortFlag,
+		utils.SCAPeriod,
+	}
 )
 
 func init() {
@@ -244,6 +255,8 @@ func init() {
 	app.Flags = append(app.Flags, consoleFlags...)
 	app.Flags = append(app.Flags, debug.Flags...)
 	app.Flags = append(app.Flags, metricsFlags...)
+	app.Flags = append(app.Flags, pbftFlags...)
+	app.Flags = append(app.Flags, scaFlags...)
 
 	app.Before = func(ctx *cli.Context) error {
 		return debug.Setup(ctx)
@@ -267,17 +280,8 @@ func main() {
 func prepare(ctx *cli.Context) {
 	// If we're running a known preset, log it for convenience.
 	switch {
-	case ctx.GlobalIsSet(utils.RopstenFlag.Name):
-		log.Info("Starting sdvn on Ropsten testnet...")
-
-	case ctx.GlobalIsSet(utils.RinkebyFlag.Name):
-		log.Info("Starting sdvn on Rinkeby testnet...")
-
-	case ctx.GlobalIsSet(utils.GoerliFlag.Name):
-		log.Info("Starting sdvn on Görli testnet...")
-
-	case ctx.GlobalIsSet(utils.CalaverasFlag.Name):
-		log.Info("Starting sdvn on Calaveras testnet...")
+	case ctx.GlobalIsSet(utils.TestnetFlag.Name):
+		log.Info("Starting sdvn on testnet...")
 
 	case ctx.GlobalIsSet(utils.DeveloperFlag.Name):
 		log.Info("Starting sdvn in ephemeral dev mode...")
@@ -288,7 +292,7 @@ func prepare(ctx *cli.Context) {
 	// If we're a full node on mainnet without --cache specified, bump default cache allowance
 	if ctx.GlobalString(utils.SyncModeFlag.Name) != "light" && !ctx.GlobalIsSet(utils.CacheFlag.Name) && !ctx.GlobalIsSet(utils.NetworkIdFlag.Name) {
 		// Make sure we're not on any supported preconfigured testnet either
-		if !ctx.GlobalIsSet(utils.RopstenFlag.Name) && !ctx.GlobalIsSet(utils.RinkebyFlag.Name) && !ctx.GlobalIsSet(utils.GoerliFlag.Name) && !ctx.GlobalIsSet(utils.DeveloperFlag.Name) {
+		if !ctx.GlobalIsSet(utils.TestnetFlag.Name) && !ctx.GlobalIsSet(utils.DeveloperFlag.Name) {
 			// Nope, we're really on mainnet. Bump that cache up!
 			log.Info("Bumping default cache on mainnet", "provided", ctx.GlobalInt(utils.CacheFlag.Name), "updated", 4096)
 			ctx.GlobalSet(utils.CacheFlag.Name, strconv.Itoa(4096))
@@ -404,6 +408,28 @@ func startNode(ctx *cli.Context, stack *node.Node, backend ethapi.Backend) {
 		}()
 	}
 
+	// Set Side chain config
+	if ctx.GlobalBool(utils.SCAEnableFlag.Name) {
+		mcRPCAddress := ctx.GlobalString(utils.SCAMainRPCAddrFlag.Name)
+		// got random rpc
+		mainRPCnode := params.MainnetRPCnodes[rand.Intn(len(params.MainnetRPCnodes))]
+		if mcRPCAddress == "" {
+			mcRPCAddress = strings.Split(mainRPCnode, ":")[0]
+		}
+		mcRPCPort := ctx.GlobalInt(utils.SCAMainRPCPortFlag.Name)
+		if mcRPCPort == 0 {
+			mcRPCPort, _ = strconv.Atoi(strings.Split(mainRPCnode, ":")[1])
+		}
+		mcPeriod := ctx.GlobalInt(utils.SCAPeriod.Name)
+		client, err := rpc.Dial("http://" + mcRPCAddress + ":" + strconv.Itoa(mcRPCPort))
+		if err != nil {
+			utils.Fatalf("Main net rpc connect fail: %v", err)
+		}
+		backend.ChainConfig().Alien.SideChain = true
+		backend.ChainConfig().Alien.Period = uint64(mcPeriod)
+		backend.ChainConfig().Alien.MCRPCClient = client
+	}
+
 	// Start auxiliary services if enabled
 	if ctx.GlobalBool(utils.MiningEnabledFlag.Name) || ctx.GlobalBool(utils.DeveloperFlag.Name) {
 		// Mining only makes sense if a full sdvn node is running
@@ -417,6 +443,9 @@ func startNode(ctx *cli.Context, stack *node.Node, backend ethapi.Backend) {
 		// Set the gas price to the limits from the CLI and start mining
 		gasprice := utils.GlobalBig(ctx, utils.MinerGasPriceFlag.Name)
 		ethBackend.TxPool().SetGasPrice(gasprice)
+		if backend.ChainConfig().Alien != nil {
+			backend.ChainConfig().Alien.PBFTEnable = ctx.GlobalBool(utils.PBFTEnableFlag.Name)
+		}
 		// start mining
 		threads := ctx.GlobalInt(utils.MinerThreadsFlag.Name)
 		if err := ethBackend.StartMining(threads); err != nil {

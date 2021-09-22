@@ -121,7 +121,7 @@ func remoteConsole(ctx *cli.Context) error {
 			path = ctx.GlobalString(utils.DataDirFlag.Name)
 		}
 		if path != "" {
-			if ctx.GlobalBool(utils.RopstenFlag.Name) {
+			if ctx.GlobalBool(utils.TestnetFlag.Name) {
 				// Maintain compatibility with older sdvn configurations storing the
 				// Ropsten database in `testnet` instead of `ropsten`.
 				legacyPath := filepath.Join(path, "testnet")
@@ -130,12 +130,6 @@ func remoteConsole(ctx *cli.Context) error {
 				} else {
 					path = filepath.Join(path, "ropsten")
 				}
-			} else if ctx.GlobalBool(utils.RinkebyFlag.Name) {
-				path = filepath.Join(path, "rinkeby")
-			} else if ctx.GlobalBool(utils.GoerliFlag.Name) {
-				path = filepath.Join(path, "goerli")
-			} else if ctx.GlobalBool(utils.CalaverasFlag.Name) {
-				path = filepath.Join(path, "calaveras")
 			}
 		}
 		endpoint = fmt.Sprintf("%s/sdvn.ipc", path)

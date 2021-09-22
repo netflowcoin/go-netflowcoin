@@ -267,7 +267,7 @@ func (p *Pruner) Prune(root common.Hash) error {
 	// is the presence of root can indicate the presence of the
 	// entire trie.
 	if blob := rawdb.ReadTrieNode(p.db, root); len(blob) == 0 {
-		// The special case is for clique based networks(rinkeby, goerli
+		// The special case is for alien and clique based networks(rinkeby, goerli
 		// and some other private networks), it's possible that two
 		// consecutive blocks will have same root. In this case snapshot
 		// difflayer won't be created. So HEAD-127 may not paired with

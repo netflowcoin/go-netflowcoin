@@ -27,6 +27,7 @@ import (
 
 	"github.com/seaskycheng/sdvn/common"
 	"github.com/seaskycheng/sdvn/consensus"
+	"github.com/seaskycheng/sdvn/consensus/alien"
 	"github.com/seaskycheng/sdvn/consensus/clique"
 	"github.com/seaskycheng/sdvn/consensus/ethash"
 	"github.com/seaskycheng/sdvn/core"
@@ -208,7 +209,11 @@ type Config struct {
 // CreateConsensusEngine creates a consensus engine for the given chain configuration.
 func CreateConsensusEngine(stack *node.Node, chainConfig *params.ChainConfig, config *ethash.Config, notify []string, noverify bool, db ethdb.Database) consensus.Engine {
 	// If proof-of-authority is requested, set it up
-	if chainConfig.Clique != nil {
+	if chainConfig.Alien != nil {
+		log.Info("CreateConsensusEngine alien")
+		return alien.New(chainConfig.Alien, db)
+	} else if chainConfig.Clique != nil {
+		log.Info("CreateConsensusEngine clique")
 		return clique.New(chainConfig.Clique, db)
 	}
 	// Otherwise assume proof-of-work

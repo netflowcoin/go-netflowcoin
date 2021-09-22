@@ -30,6 +30,7 @@ import (
 	"github.com/seaskycheng/sdvn/common"
 	"github.com/seaskycheng/sdvn/common/hexutil"
 	"github.com/seaskycheng/sdvn/consensus"
+	"github.com/seaskycheng/sdvn/consensus/alien"
 	"github.com/seaskycheng/sdvn/consensus/clique"
 	"github.com/seaskycheng/sdvn/core"
 	"github.com/seaskycheng/sdvn/core/bloombits"
@@ -139,6 +140,12 @@ func New(stack *node.Node, config *ethconfig.Config) (*Ethereum, error) {
 
 	if err := pruner.RecoverPruning(stack.ResolvePath(""), chainDb, stack.ResolvePath(config.TrieCleanCacheJournal)); err != nil {
 		log.Error("Failed to recover state", "error", err)
+	}
+	if chainConfig.Alien != nil {
+		if config.NetworkId == 1 { //eth.DefaultConfig.NetworkId
+			// change default eth networkid  to default ttc networkid
+			config.NetworkId = chainConfig.ChainID.Uint64()
+		}
 	}
 	eth := &Ethereum{
 		config:            config,
@@ -407,7 +414,7 @@ func (s *Ethereum) isLocalBlock(block *types.Block) bool {
 // during the chain reorg depending on whether the author of block
 // is a local account.
 func (s *Ethereum) shouldPreserve(block *types.Block) bool {
-	// The reason we need to disable the self-reorg preserving for clique
+	// The reason we need to disable the self-reorg preserving for alien and clique
 	// is it can be probable to introduce a deadlock.
 	//
 	// e.g. If there are 7 available signers
@@ -423,7 +430,9 @@ func (s *Ethereum) shouldPreserve(block *types.Block) bool {
 	// is A, F and G sign the block of round5 and reject the block of opponents
 	// and in the round6, the last available signer B is offline, the whole
 	// network is stuck.
-	if _, ok := s.engine.(*clique.Clique); ok {
+	if _, ok := s.engine.(*alien.Alien); ok {
+		return false
+	} else if _, ok := s.engine.(*clique.Clique); ok {
 		return false
 	}
 	return s.isLocalBlock(block)
@@ -467,7 +476,14 @@ func (s *Ethereum) StartMining(threads int) error {
 			log.Error("Cannot start mining without etherbase", "err", err)
 			return fmt.Errorf("etherbase missing: %v", err)
 		}
-		if clique, ok := s.engine.(*clique.Clique); ok {
+		if alien, ok := s.engine.(*alien.Alien); ok {
+			wallet, err := s.accountManager.Find(accounts.Account{Address: eb})
+			if wallet == nil || err != nil {
+				log.Error("Etherbase account unavailable locally", "err", err)
+				return fmt.Errorf("signer missing: %v", err)
+			}
+			alien.Authorize(eb, wallet.SignData, wallet.SignTx)
+		} else if clique, ok := s.engine.(*clique.Clique); ok {
 			wallet, err := s.accountManager.Find(accounts.Account{Address: eb})
 			if wallet == nil || err != nil {
 				log.Error("Etherbase account unavailable locally", "err", err)

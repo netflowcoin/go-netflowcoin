@@ -93,6 +93,13 @@ func New(stack *node.Node, config *ethconfig.Config) (*Lightsdvn, error) {
 		return nil, genesisErr
 	}
 	log.Info("Initialised chain configuration", "config", chainConfig)
+	if chainConfig.Alien != nil {
+		log.Info("Initialised alien configuration", "config", *chainConfig.Alien)
+		if config.NetworkId == 1 {// eth.DefaultConfig.NetworkId
+			// change default eth networkid  to default ttc networkid
+			config.NetworkId = chainConfig.ChainID.Uint64()
+		}
+	}
 
 	peers := newServerPeerSet()
 	leth := &Lightsdvn{

@@ -21,6 +21,7 @@ var Modules = map[string]string{
 	"accounting": AccountingJs,
 	"admin":      AdminJs,
 	"chequebook": ChequebookJs,
+	"alien":      AlienJS,
 	"clique":     CliqueJs,
 	"ethash":     EthashJs,
 	"debug":      DebugJs,
@@ -62,6 +63,35 @@ web3._extend({
 			call: 'chequebook_issue',
 			params: 2,
 			inputFormatter: [null, null]
+		}),
+	]
+});
+`
+
+const AlienJS = `
+web3._extend({
+	property: 'alien',
+	methods: [
+		new web3._extend.Method({
+			name: 'getSnapshot',
+			call: 'alien_getSnapshot',
+			params: 1,
+			inputFormatter: [null]
+		}),
+		new web3._extend.Method({
+			name: 'getSnapshotAtHash',
+			call: 'alien_getSnapshotAtHash',
+			params: 1
+		}),
+		new web3._extend.Method({
+			name: 'getSnapshotAtNumber',
+			call: 'alien_getSnapshotAtNumber',
+			params: 1
+		}),
+		new web3._extend.Method({
+			name: 'getSnapshotByHeaderTime',
+			call: 'alien_getSnapshotByHeaderTime',
+			params: 2
 		}),
 	]
 });

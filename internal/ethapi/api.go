@@ -32,6 +32,7 @@ import (
 	"github.com/seaskycheng/sdvn/common"
 	"github.com/seaskycheng/sdvn/common/hexutil"
 	"github.com/seaskycheng/sdvn/common/math"
+	"github.com/seaskycheng/sdvn/consensus/alien"
 	"github.com/seaskycheng/sdvn/consensus/clique"
 	"github.com/seaskycheng/sdvn/consensus/ethash"
 	"github.com/seaskycheng/sdvn/consensus/misc"
@@ -1850,6 +1851,45 @@ func (api *PublicDebugAPI) GetBlockRlp(ctx context.Context, number uint64) (stri
 		return "", err
 	}
 	return fmt.Sprintf("%x", encoded), nil
+}
+
+// TestSignAlienBlock fetches the given block number, and attempts to sign it as a alien header with the
+// given address, returning the address of the recovered signature
+//
+// This is a temporary method to debug the externalsigner integration,
+// TODO: Remove this method when the integration is mature
+func (api *PublicDebugAPI) TestSignAlienBlock(ctx context.Context, address common.Address, number uint64) (common.Address, error) {
+	block, _ := api.b.BlockByNumber(ctx, rpc.BlockNumber(number))
+	if block == nil {
+		return common.Address{}, fmt.Errorf("block #%d not found", number)
+	}
+	header := block.Header()
+	header.Extra = make([]byte, 32+65)
+	encoded := alien.AlienRLP(header)
+
+	// Look up the wallet containing the requested signer
+	account := accounts.Account{Address: address}
+	wallet, err := api.b.AccountManager().Find(account)
+	if err != nil {
+		return common.Address{}, err
+	}
+
+	signature, err := wallet.SignData(account, accounts.MimetypeAlien, encoded)
+	if err != nil {
+		return common.Address{}, err
+	}
+	sealHash := alien.SealHash(header).Bytes()
+	log.Info("test signing of alien block",
+		"Sealhash", fmt.Sprintf("%x", sealHash),
+		"signature", fmt.Sprintf("%x", signature))
+	pubkey, err := crypto.Ecrecover(sealHash, signature)
+	if err != nil {
+		return common.Address{}, err
+	}
+	var signer common.Address
+	copy(signer[:], crypto.Keccak256(pubkey[1:])[12:])
+
+	return signer, nil
 }
 
 // TestSignCliqueBlock fetches the given block number, and attempts to sign it as a clique header with the

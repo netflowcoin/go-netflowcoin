@@ -62,6 +62,16 @@ function testSignText(){
         console.log("signing response",  r)
     }
 }
+function testAlien(){
+    if( accts && accts.length > 0){
+        var a = accts[0]
+        var r = debug.testSignAlienBlock(a, 0); // Sign genesis
+        console.log("signing response",  r)
+        if( a != r){
+            throw new Error("Requested signing by "+a+ " but got sealer "+r)
+        }
+    }
+}
 function testClique(){
     if( accts && accts.length > 0){
         var a = accts[0]
@@ -77,6 +87,7 @@ function test(){
     var tests = [
         testTx,
         testSignText,
+        testAlien,
         testClique,
     ]
     for( i in tests){

@@ -28,6 +28,7 @@ import (
 
 	"github.com/seaskycheng/sdvn/common"
 	"github.com/seaskycheng/sdvn/consensus"
+	"github.com/seaskycheng/sdvn/consensus/alien"
 	"github.com/seaskycheng/sdvn/core"
 	"github.com/seaskycheng/sdvn/core/rawdb"
 	"github.com/seaskycheng/sdvn/core/state"
@@ -96,6 +97,9 @@ func NewLightChain(odr OdrBackend, config *params.ChainConfig, engine consensus.
 	bc.hc, err = core.NewHeaderChain(odr.Database(), config, bc.engine, bc.getProcInterrupt)
 	if err != nil {
 		return nil, err
+	}
+	if alien, ok := bc.engine.(*alien.Alien); ok {
+		alien.ApplyGenesis(bc.hc, bc.hc.CurrentHeader().Root)
 	}
 	bc.genesisBlock, _ = bc.GetBlockByNumber(NoOdr, 0)
 	if bc.genesisBlock == nil {
@@ -506,14 +510,16 @@ func (lc *LightChain) Config() *params.ChainConfig { return lc.hc.Config() }
 // SyncCheckpoint fetches the checkpoint point block header according to
 // the checkpoint provided by the remote peer.
 //
-// Note if we are running the clique, fetches the last epoch snapshot header
+// Note if we are running the alien or clique, fetches the last epoch snapshot header
 // which covered by checkpoint.
 func (lc *LightChain) SyncCheckpoint(ctx context.Context, checkpoint *params.TrustedCheckpoint) bool {
 	// Ensure the remote checkpoint head is ahead of us
 	head := lc.CurrentHeader().Number.Uint64()
 
 	latest := (checkpoint.SectionIndex+1)*lc.indexerConfig.ChtSize - 1
-	if clique := lc.hc.Config().Clique; clique != nil {
+	if alien := lc.hc.Config().Alien; alien != nil {
+		latest -= latest % alien.Epoch // epoch snapshot for alien
+	} else if clique := lc.hc.Config().Clique; clique != nil {
 		latest -= latest % clique.Epoch // epoch snapshot for clique
 	}
 	if head >= latest {
