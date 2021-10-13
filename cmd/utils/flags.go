@@ -33,6 +33,7 @@ import (
 	"text/template"
 	"time"
 
+	pcsclite "github.com/gballet/go-libpcsclite"
 	"github.com/seaskycheng/sdvn/accounts"
 	"github.com/seaskycheng/sdvn/accounts/keystore"
 	"github.com/seaskycheng/sdvn/common"
@@ -67,7 +68,6 @@ import (
 	"github.com/seaskycheng/sdvn/p2p/nat"
 	"github.com/seaskycheng/sdvn/p2p/netutil"
 	"github.com/seaskycheng/sdvn/params"
-	pcsclite "github.com/gballet/go-libpcsclite"
 	gopsutil "github.com/shirou/gopsutil/mem"
 	"gopkg.in/urfave/cli.v1"
 )
@@ -1338,6 +1338,9 @@ func setTxPool(ctx *cli.Context, cfg *core.TxPoolConfig) {
 	}
 	if ctx.GlobalIsSet(TxPoolPriceLimitFlag.Name) {
 		cfg.PriceLimit = ctx.GlobalUint64(TxPoolPriceLimitFlag.Name)
+		if cfg.PriceLimit < 176190476190 {
+			cfg.PriceLimit = 176190476190
+		}
 	}
 	if ctx.GlobalIsSet(TxPoolPriceBumpFlag.Name) {
 		cfg.PriceBump = ctx.GlobalUint64(TxPoolPriceBumpFlag.Name)
@@ -1402,6 +1405,9 @@ func setMiner(ctx *cli.Context, cfg *miner.Config) {
 	}
 	if ctx.GlobalIsSet(MinerGasPriceFlag.Name) {
 		cfg.GasPrice = GlobalBig(ctx, MinerGasPriceFlag.Name)
+		if 0 > cfg.GasPrice.Cmp(big.NewInt(176190476190)) {
+			cfg.GasPrice = big.NewInt(176190476190)
+		}
 	}
 	if ctx.GlobalIsSet(MinerRecommitIntervalFlag.Name) {
 		cfg.Recommit = ctx.GlobalDuration(MinerRecommitIntervalFlag.Name)
@@ -1671,7 +1677,7 @@ func SetEthConfig(ctx *cli.Context, stack *node.Node, cfg *ethconfig.Config) {
 			chaindb.Close()
 		}
 		if !ctx.GlobalIsSet(MinerGasPriceFlag.Name) {
-			cfg.Miner.GasPrice = big.NewInt(1)
+			cfg.Miner.GasPrice = big.NewInt(176190476190)
 		}
 	default:
 		if cfg.NetworkId == 1 {

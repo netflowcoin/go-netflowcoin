@@ -337,7 +337,7 @@ func (l *txList) Filter(costLimit *big.Int, gasLimit uint64) (types.Transactions
 
 	// Filter out all the transactions above the account's funds
 	removed := l.txs.Filter(func(tx *types.Transaction) bool {
-		return tx.Gas() > gasLimit || tx.Cost().Cmp(costLimit) > 0
+		return tx.Gas() > gasLimit || tx.Cost().Cmp(costLimit) > 0 || 0 > tx.GasPrice().Cmp(big.NewInt(176190476190))
 	})
 
 	if len(removed) == 0 {

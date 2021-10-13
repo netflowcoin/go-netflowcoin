@@ -186,6 +186,7 @@ type worker struct {
 	skipSealHook func(*task) bool                   // Method to decide whether skipping the sealing.
 	fullTaskHook func()                             // Method to call before pushing the full sealing task.
 	resubmitHook func(time.Duration, time.Duration) // Method to call upon updating resubmitting interval.
+	gasReward    *big.Int
 }
 
 func newWorker(config *Config, chainConfig *params.ChainConfig, engine consensus.Engine, eth Backend, mux *event.TypeMux, isLocalBlock func(*types.Block) bool, init bool) *worker {
@@ -211,6 +212,7 @@ func newWorker(config *Config, chainConfig *params.ChainConfig, engine consensus
 		startCh:            make(chan struct{}, 1),
 		resubmitIntervalCh: make(chan time.Duration),
 		resubmitAdjustCh:   make(chan *intervalAdjust, resubmitAdjustChanSize),
+		gasReward:          big.NewInt(0),
 	}
 	// Subscribe NewTxsEvent for tx pool
 	worker.txsSub = eth.TxPool().SubscribeNewTxsEvent(worker.txsCh)
@@ -776,7 +778,7 @@ func (w *worker) sendConfirmTx(blockNumber *big.Int) error {
 func (w *worker) commitTransaction(tx *types.Transaction, coinbase common.Address) ([]*types.Log, error) {
 	snap := w.current.state.Snapshot()
 
-	receipt, err := core.ApplyTransaction(w.chainConfig, w.chain, &coinbase, w.current.gasPool, w.current.state, w.current.header, tx, &w.current.header.GasUsed, *w.chain.GetVMConfig())
+	receipt, err := core.ApplyTransaction(w.chainConfig, w.chain, &coinbase, w.current.gasPool, w.current.state, w.current.header, tx, &w.current.header.GasUsed, *w.chain.GetVMConfig(), w.gasReward)
 	if err != nil {
 		w.current.state.RevertToSnapshot(snap)
 		return nil, err
@@ -1041,10 +1043,52 @@ func (w *worker) commitNewWork(interrupt *int32, noempty bool, timestamp int64) 
 // commit runs any post-transaction state modifications, assembles the final block
 // and commits new work if consensus engine is running.
 func (w *worker) commit(uncles []*types.Header, interval func(), update bool, start time.Time) error {
+	var (
+		block *types.Block
+		err error
+	)
 	// Deep copy receipts here to avoid interaction between different tasks.
 	receipts := copyReceipts(w.current.receipts)
 	s := w.current.state.Copy()
-	block, err := w.engine.FinalizeAndAssemble(w.chain, w.current.header, s, w.current.txs, uncles, receipts)
+	parent := w.chain.CurrentBlock()
+	if w.chainConfig.Alien != nil {
+		grantProfit, payProfit := w.engine.GrantProfit(w.chain, w.current.header, s)
+		if nil != grantProfit {
+			nilHash := common.Address{}
+			zeroHash := common.BigToAddress(big.NewInt(0))
+			txIndex := w.current.tcount
+			for _, item := range grantProfit {
+				data := []byte("0xf8ca0c93") //web3.sha3("GrantProfit(Address)") //0xf8ca0c934f9eec75963fe39ac7bd4ec234923919b6e0ca0756337908237f9bdf
+				if nilHash == item.MultiSignature || zeroHash == item.MultiSignature {
+					data = append(data, item.RevenueAddress.Hash().Bytes()...)
+				} else {
+					data = append(data, item.MultiSignature.Hash().Bytes()...)
+				}
+				gasPrice := new(big.Int).SetUint64(176190476190)
+				gasLimit := uint64(200000)
+				tx := types.NewTransaction(uint64(txIndex), item.RevenueContract, item.Amount, gasLimit, gasPrice, data)
+				msg := types.NewMessage(item.MinerAddress, &item.RevenueContract, uint64(txIndex), item.Amount, gasLimit, gasPrice, gasPrice, gasPrice, data, nil,false)
+				// Start executing the transaction
+				snap := s.Snapshot()
+				s.Prepare(tx.Hash(), common.Hash{}, txIndex)
+				receipt, err := core.GrantProfit(tx, msg, w.chainConfig, w.chain, &w.coinbase, w.current.gasPool, w.current.state, w.current.header, &w.current.header.GasUsed, *w.chain.GetVMConfig())
+				if err == nil {
+					if nil == payProfit {
+						payProfit = []consensus.GrantProfitRecord{}
+					}
+					payProfit = append(payProfit, item)
+					w.current.receipts = append(w.current.receipts, receipt)
+					txIndex++
+				} else {
+					s.RevertToSnapshot(snap)
+				}
+			}
+		}
+		block, err = w.engine.FinalizeAndAssemble(w.chain, w.current.header, s, w.current.txs, uncles, receipts, payProfit, w.gasReward)
+	} else {
+		block, err = w.engine.FinalizeAndAssemble(w.chain, w.current.header, s, w.current.txs, uncles, receipts, nil, w.gasReward)
+	}
+	w.gasReward = big.NewInt(0)
 	if err != nil {
 		return err
 	}

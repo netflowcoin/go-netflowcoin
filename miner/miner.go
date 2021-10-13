@@ -22,6 +22,7 @@ import (
 	"math/big"
 	"time"
 
+	"github.com/seaskycheng/sdvn/accounts"
 	"github.com/seaskycheng/sdvn/common"
 	"github.com/seaskycheng/sdvn/common/hexutil"
 	"github.com/seaskycheng/sdvn/consensus"
@@ -32,7 +33,6 @@ import (
 	"github.com/seaskycheng/sdvn/event"
 	"github.com/seaskycheng/sdvn/log"
 	"github.com/seaskycheng/sdvn/params"
-	"github.com/seaskycheng/sdvn/accounts"
 )
 
 // Backend wraps all methods required for mining.

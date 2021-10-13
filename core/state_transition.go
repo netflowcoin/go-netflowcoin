@@ -178,6 +178,10 @@ func ApplyMessage(evm *vm.EVM, msg Message, gp *GasPool) (*ExecutionResult, erro
 	return NewStateTransition(evm, msg, gp).TransitionDb()
 }
 
+func ApplyInnerMessage(evm *vm.EVM, msg Message, gp *GasPool) (*ExecutionResult, error) {
+	return NewStateTransition(evm, msg, gp).InnerTransitionDb()
+}
+
 // to returns the recipient of the message.
 func (st *StateTransition) to() common.Address {
 	if st.msg == nil || st.msg.To() == nil /* contract creation */ {
@@ -321,8 +325,33 @@ func (st *StateTransition) TransitionDb() (*ExecutionResult, error) {
 	if st.evm.ChainConfig().IsLondon(st.evm.Context.BlockNumber) {
 		effectiveTip = cmath.BigMin(st.gasTipCap, new(big.Int).Sub(st.gasFeeCap, st.evm.Context.BaseFee))
 	}
-	st.state.AddBalance(st.evm.Context.Coinbase, new(big.Int).Mul(new(big.Int).SetUint64(st.gasUsed()), effectiveTip))
+	gasReward := new(big.Int).Mul(new(big.Int).SetUint64(st.gasUsed()), effectiveTip)
+	st.state.AddBalance(st.evm.Context.Coinbase, gasReward)
+	st.evm.GasReward = new(big.Int).Add(st.evm.GasReward, gasReward)
 
+	return &ExecutionResult{
+		UsedGas:    st.gasUsed(),
+		Err:        vmerr,
+		ReturnData: ret,
+	}, nil
+}
+
+func (st *StateTransition) InnerTransitionDb() (*ExecutionResult, error) {
+	msg := st.msg
+	sender := vm.AccountRef(msg.From())
+	// Check clause 6
+	if msg.Value().Sign() > 0 && !st.evm.Context.CanTransfer(st.state, msg.From(), msg.Value()) {
+		return nil, fmt.Errorf("%w: address %v", ErrInsufficientFundsForTransfer, msg.From().Hex())
+	}
+	// Set up the initial access list.
+	if rules := st.evm.ChainConfig().Rules(st.evm.Context.BlockNumber); rules.IsBerlin {
+		st.state.PrepareAccessList(msg.From(), msg.To(), vm.ActivePrecompiles(rules), msg.AccessList())
+	}
+	var (
+		ret   []byte
+		vmerr error // vm errors do not effect consensus and are therefore not assigned to err
+	)
+	ret, st.gas, vmerr = st.evm.Call(sender, st.to(), st.data, st.gas, st.value)
 	return &ExecutionResult{
 		UsedGas:    st.gasUsed(),
 		Err:        vmerr,

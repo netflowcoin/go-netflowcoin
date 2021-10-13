@@ -1,3 +1,22 @@
+20211013 seaskycheng V0.5
+         limit min gas price is 0.0037NFC
+         add miner bind revenue address
+         add candidate pledge
+         change signer selector rule
+         change candidate reward
+         add candidate punished
+         add miner bandwidth claimed
+         add miner flow pledge
+         add miner bandwidth punished
+         add miner flow reward
+         add miner bandwidth reward
+         add flow report
+         add NFC exchange FUL
+         add lock anf release reward
+         add system configure
+         add manager address
+20210922 seaskycheng V0.4
+         add alien dpos
 20210917 seaskycheng V0.3.2
          fix rpc nx bug
 20210908 seaskycheng V0.3.1

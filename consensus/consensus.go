@@ -27,6 +27,16 @@ import (
 	"github.com/seaskycheng/sdvn/rpc"
 )
 
+type GrantProfitRecord struct {
+	Which           uint64
+	MinerAddress    common.Address
+	BlockNumber     uint64
+	Amount          *big.Int
+	RevenueAddress  common.Address
+	RevenueContract common.Address
+	MultiSignature  common.Address
+}
+
 // ChainHeaderReader defines a small collection of methods needed to access the local
 // blockchain during header verification.
 type ChainHeaderReader interface {
@@ -81,13 +91,15 @@ type Engine interface {
 	// rules of a particular engine. The changes are executed inline.
 	Prepare(chain ChainHeaderReader, header *types.Header) error
 
+	GrantProfit (chain ChainHeaderReader, header *types.Header, state *state.StateDB) ([]GrantProfitRecord, []GrantProfitRecord)
+
 	// Finalize runs any post-transaction state modifications (e.g. block rewards)
 	// but does not assemble the block.
 	//
 	// Note: The block header and state database might be updated to reflect any
 	// consensus rules that happen at finalization (e.g. block rewards).
 	Finalize(chain ChainHeaderReader, header *types.Header, state *state.StateDB, txs []*types.Transaction,
-		uncles []*types.Header, receipts []*types.Receipt)
+		uncles []*types.Header, receipts []*types.Receipt, grantProfit []GrantProfitRecord, gasReward *big.Int)
 
 	// FinalizeAndAssemble runs any post-transaction state modifications (e.g. block
 	// rewards) and assembles the final block.
@@ -95,7 +107,7 @@ type Engine interface {
 	// Note: The block header and state database might be updated to reflect any
 	// consensus rules that happen at finalization (e.g. block rewards).
 	FinalizeAndAssemble(chain ChainHeaderReader, header *types.Header, state *state.StateDB, txs []*types.Transaction,
-		uncles []*types.Header, receipts []*types.Receipt) (*types.Block, error)
+		uncles []*types.Header, receipts []*types.Receipt, grantProfit []GrantProfitRecord, gasReward *big.Int) (*types.Block, error)
 
 	// Seal generates a new sealing request for the given input block and pushes
 	// the result into the given channel.

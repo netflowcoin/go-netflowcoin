@@ -40,6 +40,7 @@ import (
 	"github.com/seaskycheng/sdvn/rlp"
 	"github.com/seaskycheng/sdvn/rpc"
 	"github.com/seaskycheng/sdvn/trie"
+	"github.com/shopspring/decimal"
 	"golang.org/x/crypto/sha3"
 )
 
@@ -53,9 +54,11 @@ const (
 
 // Alien delegated-proof-of-stake protocol constants.
 var (
-	totalBlockReward                 = new(big.Int).Mul(big.NewInt(1e+18), big.NewInt(2.5e+8)) // Block reward in wei
-	defaultEpochLength               = uint64(201600)                                          // Default number of blocks after which vote's period of validity, About one week if period is 3
-	defaultBlockPeriod               = uint64(3)                                               // Default minimum difference between two consecutive block's timestamps
+	totalBlockReward                 = new(big.Int).Mul(big.NewInt(1e+18), big.NewInt( 105000000)) // Block reward in wei
+	totalBandwidthReward             = new(big.Int).Mul(big.NewInt(1e+18), big.NewInt( 210000000)) // Block reward in wei
+	totalFlowReward                  = new(big.Int).Mul(big.NewInt(1e+18), big.NewInt(1155000000)) // Block reward in wei
+	defaultEpochLength               = uint64(60480)                                          // Default number of blocks after which vote's period of validity, About one week if period is 10
+	defaultBlockPeriod               = uint64(10)                                               // Default minimum difference between two consecutive block's timestamps
 	defaultMaxSignerCount            = uint64(21)                                              //
 	minVoterBalance                  = new(big.Int).Mul(big.NewInt(100), big.NewInt(1e+18))
 	extraVanity                      = 32                                                    // Fixed number of extra-data prefix bytes reserved for signer vanity
@@ -64,7 +67,7 @@ var (
 	defaultDifficulty                = big.NewInt(1)                                         // Default difficulty
 	defaultLoopCntRecalculateSigners = uint64(10)                                            // Default loop count to recreate signers from top tally
 	minerRewardPerThousand           = uint64(618)                                           // Default reward for miner in each block from block reward (618/1000)
-	candidateNeedPD                  = false                                                 // is new candidate need Proposal & Declare process
+	candidateNeedPD                  = true                                                 // is new candidate need Proposal & Declare process
 	mcNetVersion                     = uint64(0)                                             // the net version of main chain
 	mcLoopStartTime                  = uint64(0)                                             // the loopstarttime of main chain
 	mcPeriod                         = uint64(0)                                             // the period of main chain
@@ -747,9 +750,112 @@ func (a *Alien) mcConfirmBlock(chain consensus.ChainHeaderReader, header *types.
 
 }
 
+func (a *Alien) GrantProfit (chain consensus.ChainHeaderReader, header *types.Header, state *state.StateDB) ([]consensus.GrantProfitRecord, []consensus.GrantProfitRecord) {
+	var genesisVotes []*Vote
+	number := header.Number.Uint64()
+	if number == 1 {
+		alreadyVote := make(map[common.Address]struct{})
+		for _, unPrefixVoter := range a.config.SelfVoteSigners {
+			voter := common.Address(unPrefixVoter)
+			if _, ok := alreadyVote[voter]; !ok {
+				genesisVotes = append(genesisVotes, &Vote{
+					Voter:     voter,
+					Candidate: voter,
+					Stake:     state.GetBalance(voter),
+				})
+				alreadyVote[voter] = struct{}{}
+			}
+		}
+	}
+	// Assemble the voting snapshot to check which votes make sense
+	snap, err := a.snapshot(chain, number-1, header.ParentHash, nil, genesisVotes, defaultLoopCntRecalculateSigners)
+	if err != nil {
+		log.Info("alien Finalize exit 3")
+		return nil, nil
+	}
+
+	var playGrantProfit []consensus.GrantProfitRecord
+	var currentGrantProfit []consensus.GrantProfitRecord
+	for address, item := range snap.CandidatePledge {
+		result, amount := paymentPledge (false, item, state, header)
+		if 0 == result {
+			playGrantProfit = append(playGrantProfit, consensus.GrantProfitRecord{
+				Which:           sscEnumCndLock,
+				MinerAddress:    address,
+				BlockNumber:     0,
+				Amount:          new(big.Int).Set(amount),
+				RevenueAddress:  item.RevenueAddress,
+				RevenueContract: item.RevenueContract,
+				MultiSignature:  item.MultiSignature,
+			})
+		} else if 1 == result {
+			currentGrantProfit = append(currentGrantProfit, consensus.GrantProfitRecord{
+				Which:           sscEnumCndLock,
+				MinerAddress:    address,
+				BlockNumber:     0,
+				Amount:          new(big.Int).Set(amount),
+				RevenueAddress:  item.RevenueAddress,
+				RevenueContract: item.RevenueContract,
+				MultiSignature:  item.MultiSignature,
+			})
+		}
+	}
+	for address, item := range snap.FlowPledge {
+		result, amount := paymentPledge (true, item, state, header)
+		if 0 == result {
+			playGrantProfit = append(playGrantProfit, consensus.GrantProfitRecord{
+				Which:           sscEnumFlwLock,
+				MinerAddress:    address,
+				BlockNumber:     0,
+				Amount:          new(big.Int).Set(amount),
+				RevenueAddress:  item.RevenueAddress,
+				RevenueContract: item.RevenueContract,
+				MultiSignature:  item.MultiSignature,
+			})
+		} else if 1 == result {
+			currentGrantProfit = append(currentGrantProfit, consensus.GrantProfitRecord{
+				Which:           sscEnumFlwLock,
+				MinerAddress:    address,
+				BlockNumber:     0,
+				Amount:          new(big.Int).Set(amount),
+				RevenueAddress:  item.RevenueAddress,
+				RevenueContract: item.RevenueContract,
+				MultiSignature:  item.MultiSignature,
+			})
+		}
+	}
+	for address, items := range snap.FlowRevenue {
+		for blockNumber, item := range items {
+			result, amount := paymentPledge (true, item, state, header)
+			if 0 == result {
+				playGrantProfit = append(playGrantProfit, consensus.GrantProfitRecord{
+					Which:           sscEnumRwdLock,
+					MinerAddress:    address,
+					BlockNumber:     blockNumber,
+					Amount:          new(big.Int).Set(amount),
+					RevenueAddress:  item.RevenueAddress,
+					RevenueContract: item.RevenueContract,
+					MultiSignature:  item.MultiSignature,
+				})
+			} else if 1 == result {
+				currentGrantProfit = append(currentGrantProfit, consensus.GrantProfitRecord{
+					Which:           sscEnumRwdLock,
+					MinerAddress:    address,
+					BlockNumber:     blockNumber,
+					Amount:          new(big.Int).Set(amount),
+					RevenueAddress:  item.RevenueAddress,
+					RevenueContract: item.RevenueContract,
+					MultiSignature:  item.MultiSignature,
+				})
+			}
+		}
+	}
+	return currentGrantProfit, playGrantProfit
+}
+
 // Finalize implements consensus.Engine, ensuring no uncles are set, nor block
 // rewards given.
-func (a *Alien) Finalize(chain consensus.ChainHeaderReader, header *types.Header, state *state.StateDB, txs []*types.Transaction, uncles []*types.Header, receipts []*types.Receipt) {
+func (a *Alien) Finalize(chain consensus.ChainHeaderReader, header *types.Header, state *state.StateDB, txs []*types.Transaction, uncles []*types.Header, receipts []*types.Receipt, grantProfit []consensus.GrantProfitRecord, gasReward *big.Int) {
 	number := header.Number.Uint64()
 
 	// Mix digest is reserved for now, set to empty
@@ -758,7 +864,7 @@ func (a *Alien) Finalize(chain consensus.ChainHeaderReader, header *types.Header
 	// Ensure the timestamp has the correct delay
 	parent := chain.GetHeader(header.ParentHash, number-1)
 	if parent == nil {
-		return // nil, consensus.ErrUnknownAncestor
+		return
 	}
 	header.Time = parent.Time + a.config.Period
 	if int64(header.Time) < time.Now().Unix() {
@@ -794,7 +900,7 @@ func (a *Alien) Finalize(chain consensus.ChainHeaderReader, header *types.Header
 		err := decodeHeaderExtra(a.config, parent.Number, parent.Extra[extraVanity:len(parent.Extra)-extraSeal], &parentHeaderExtra)
 		if err != nil {
 			log.Info("Fail to decode parent header", "err", err)
-			return //nil, err
+			return
 		}
 		currentHeaderExtra.ConfirmedBlockNumber = parentHeaderExtra.ConfirmedBlockNumber
 		currentHeaderExtra.SignerQueue = parentHeaderExtra.SignerQueue
@@ -805,12 +911,11 @@ func (a *Alien) Finalize(chain consensus.ChainHeaderReader, header *types.Header
 			if number%a.config.MaxSignerCount == 1 {
 				grandParent := chain.GetHeader(parent.ParentHash, number-2)
 				if grandParent == nil {
-					return //nil, errLastLoopHeaderFail
+					return
 				}
 				err := decodeHeaderExtra(a.config, grandParent.Number, grandParent.Extra[extraVanity:len(grandParent.Extra)-extraSeal], &grandParentHeaderExtra)
 				if err != nil {
-					log.Info("Fail to decode parent header", "err", err)
-					return //nil, err
+					return
 				}
 			}
 			currentHeaderExtra.SignerMissing = getSignerMissingTrantor(parent.Coinbase, header.Coinbase, &parentHeaderExtra, &grandParentHeaderExtra)
@@ -827,13 +932,13 @@ func (a *Alien) Finalize(chain consensus.ChainHeaderReader, header *types.Header
 	// Assemble the voting snapshot to check which votes make sense
 	snap, err := a.snapshot(chain, number-1, header.ParentHash, nil, genesisVotes, defaultLoopCntRecalculateSigners)
 	if err != nil {
-		return //nil, err
+		return
 	}
 	if !chain.Config().Alien.SideChain {
 		// calculate votes write into header.extra
 		mcCurrentHeaderExtra, refundGas, err := a.processCustomTx(currentHeaderExtra, chain, header, state, txs, receipts)
 		if err != nil {
-			return //nil, err
+			return
 		}
 		currentHeaderExtra = mcCurrentHeaderExtra
 		currentHeaderExtra.ConfirmedBlockNumber = snap.getLastConfirmedBlockNumber(currentHeaderExtra.CurrentBlockConfirmations).Uint64()
@@ -849,18 +954,33 @@ func (a *Alien) Finalize(chain consensus.ChainHeaderReader, header *types.Header
 			//currentHeaderExtra.LoopStartTime = header.Time.Uint64()
 			currentHeaderExtra.LoopStartTime = currentHeaderExtra.LoopStartTime + a.config.Period*a.config.MaxSignerCount
 			// create random signersQueue in currentHeaderExtra by snapshot.Tally
+			snap1 := snap.copy()
+			currentHeaderExtra.MinerStake = snap1.updateMinerState (state)
 			currentHeaderExtra.SignerQueue = []common.Address{}
-			newSignerQueue, err := snap.createSignerQueue()
+			newSignerQueue, err := snap1.createSignerQueue()
 			if err != nil {
-				return //nil, err
+				return
 			}
 			currentHeaderExtra.SignerQueue = newSignerQueue
 		}
 
-		// Accumulate any block rewards and commit the final state root
-		if err := accumulateRewards(chain.Config(), state, header, snap, refundGas); err != nil {
-			return //nil, errUnauthorized
+		// play pledge
+		currentHeaderExtra.GrantProfit = []consensus.GrantProfitRecord{}
+		if nil != grantProfit {
+			currentHeaderExtra.GrantProfit = append(currentHeaderExtra.GrantProfit, grantProfit...)
 		}
+		// play flow
+		blockPerDay := 24 * 60 * 60 / chain.Config().Alien.Period
+		rewardBlock := 60 * 60 / chain.Config().Alien.Period
+		if rewardBlock == header.Number.Uint64() % blockPerDay && rewardBlock != header.Number.Uint64() {
+			flowHarvest := big.NewInt(0)
+			currentHeaderExtra.LockReward, flowHarvest = accumulateFlowRewards (currentHeaderExtra.LockReward, snap)
+			currentHeaderExtra.FlowHarvest.Set(flowHarvest)
+		} else if 0 == header.Number.Uint64() % blockPerDay && 0 != header.Number.Uint64() {
+			currentHeaderExtra.LockReward = accumulateBandwidthRewards (currentHeaderExtra.LockReward, chain.Config(), header, snap)
+		}
+		// Accumulate any block rewards and commit the final state root
+		accumulateRewards(chain.Config(), state, header, snap, refundGas, gasReward)
 	} else {
 		// use currentHeaderExtra.SignerQueue as signer queue
 		currentHeaderExtra.SignerQueue = append([]common.Address{header.Coinbase}, parentHeaderExtra.SignerQueue...)
@@ -872,7 +992,7 @@ func (a *Alien) Finalize(chain consensus.ChainHeaderReader, header *types.Header
 	// encode header.extra
 	currentHeaderExtraEnc, err := encodeHeaderExtra(a.config, header.Number, currentHeaderExtra)
 	if err != nil {
-		return //nil, err
+		return
 	}
 
 	header.Extra = append(header.Extra, currentHeaderExtraEnc...)
@@ -881,11 +1001,8 @@ func (a *Alien) Finalize(chain consensus.ChainHeaderReader, header *types.Header
 	header.Root = state.IntermediateRoot(chain.Config().IsEIP158(header.Number))
 }
 
-// Finalize implements consensus.Engine, ensuring no uncles are set, nor block
-// rewards given, and returns the final block.
-func (a *Alien) FinalizeAndAssemble(chain consensus.ChainHeaderReader, header *types.Header, state *state.StateDB, txs []*types.Transaction, uncles []*types.Header, receipts []*types.Receipt) (*types.Block, error) {
-	a.Finalize(chain, header, state, txs, uncles, receipts)
-
+func (a *Alien) FinalizeAndAssemble(chain consensus.ChainHeaderReader, header *types.Header, state *state.StateDB, txs []*types.Transaction, uncles []*types.Header, receipts []*types.Receipt, grantProfit []consensus.GrantProfitRecord, gasReward *big.Int) (*types.Block, error) {
+	a.Finalize(chain, header, state, txs, uncles, receipts, grantProfit, gasReward)
 	// Assemble and return the final block for sealing
 	return types.NewBlock(header, txs, nil, receipts, trie.NewStackTrie(nil)), nil
 }
@@ -1106,52 +1223,189 @@ func sideChainRewards(config *params.ChainConfig, state *state.StateDB, header *
 	}
 }
 
+func paymentReward (minerAddress common.Address, amount *big.Int, state *state.StateDB, snap *Snapshot) {
+	if amount.Cmp(big.NewInt(0)) <= 0 {
+		return
+	}
+	if revenue, ok := snap.RevenueNormal[minerAddress]; ok {
+		nilHash := common.Address{}
+		zeroHash := common.BigToAddress(big.NewInt(0))
+		if nilHash == revenue.MultiSignature || zeroHash == revenue.MultiSignature {
+			state.AddBalance(revenue.RevenueAddress, amount)
+		} else {
+			state.AddBalance(revenue.MultiSignature, amount)
+		}
+	} else {
+		state.AddBalance(minerAddress, amount)
+	}
+}
+
+func paymentPledge (hasContract bool, pledge *PledgeItem, state *state.StateDB, header *types.Header) (int, *big.Int) {
+	if 0 == pledge.StartHigh {
+		return -1, nil
+	}
+	lockExpire := new(big.Int).Add(big.NewInt(int64(pledge.StartHigh)), big.NewInt(int64(pledge.LockPeriod)))
+	if 0 > header.Number.Cmp(lockExpire) {
+		return -1, nil
+	}
+	amount := big.NewInt(0)
+	if 0 == pledge.RlsPeriod || 0 == pledge.Interval || 0 <= header.Number.Cmp(new(big.Int).Add(lockExpire, big.NewInt(int64(pledge.RlsPeriod)))) {
+		amount = new(big.Int).Sub(new(big.Int).Add(pledge.Amount, pledge.reward), pledge.playment)
+	} else {
+		currentPeriod := new(big.Int).Div(new(big.Int).Sub(header.Number, lockExpire), big.NewInt(int64(pledge.Interval)))
+		totalPeriod := (pledge.RlsPeriod + pledge.Interval - 1) / pledge.Interval
+		totalPlayment := new(big.Int).Div(new(big.Int).Mul(new(big.Int).Add(pledge.Amount, pledge.reward), currentPeriod), big.NewInt(int64(totalPeriod)))
+		amount = new(big.Int).Sub(totalPlayment, pledge.playment)
+	}
+	nilHash := common.Address{}
+	zeroHash := common.BigToAddress(big.NewInt(0))
+	if !hasContract || nilHash == pledge.RevenueContract || zeroHash == pledge.RevenueContract {
+		if nilHash == pledge.MultiSignature || zeroHash == pledge.MultiSignature {
+			state.AddBalance(pledge.RevenueAddress, amount)
+		} else {
+			state.AddBalance(pledge.MultiSignature, amount)
+		}
+		return 0, amount
+	}
+	return 1, amount
+}
+
+func accumulateBandwidthRewards(currentLockReward []LockRewardRecord, config *params.ChainConfig, header *types.Header, snap *Snapshot) []LockRewardRecord {
+	blockNumPerYear := secondsPerYear / config.Alien.Period
+	yearCount := header.Number.Uint64() / blockNumPerYear
+	exponent := decimal.New(943874313, -9).Pow(decimal.NewFromInt(int64(yearCount)))
+	yearScale := decimal.New(56125687, -9).Mul(exponent)
+	yearReward := yearScale.Mul(decimal.NewFromBigInt(totalBandwidthReward, 0))
+	bandwidthReward := yearReward.Div(decimal.NewFromInt(365))
+	bandwidthReward1 := bandwidthReward.Mul(decimal.New(4, -1))
+	bandwidthReward2 := bandwidthReward.Mul(decimal.New(3, -1))
+	bandwidthReward3 := bandwidthReward.Mul(decimal.New(2, -1))
+	bandwidthReward4 := bandwidthReward.Mul(decimal.New(1, -1))
+	flowHarvest1 := big.NewInt(0)
+	flowHarvest2 := big.NewInt(0)
+	flowHarvest3 := big.NewInt(0)
+	flowHarvest4 := big.NewInt(0)
+	for _, bandwidth := range snap.Bandwidth {
+		if bandwidth.BandwidthClaimed > 1500 {
+			flowHarvest1 = new(big.Int).Add(flowHarvest1, big.NewInt(int64(bandwidth.BandwidthClaimed)))
+		} else if bandwidth.BandwidthClaimed > 800 {
+			flowHarvest2 = new(big.Int).Add(flowHarvest2, big.NewInt(int64(bandwidth.BandwidthClaimed)))
+		} else if bandwidth.BandwidthClaimed > 300 {
+			flowHarvest3 = new(big.Int).Add(flowHarvest3, big.NewInt(int64(bandwidth.BandwidthClaimed)))
+		} else {
+			flowHarvest4 = new(big.Int).Add(flowHarvest4, big.NewInt(int64(bandwidth.BandwidthClaimed)))
+		}
+	}
+	for minerAddress, bandwidth := range snap.Bandwidth {
+		reward := big.NewInt(0)
+		if bandwidth.BandwidthClaimed > 1500 {
+			reward.Set(bandwidthReward1.Mul(decimal.NewFromInt(int64(bandwidth.BandwidthClaimed))).Div(decimal.NewFromBigInt(flowHarvest1, 0)).BigInt())
+		} else if bandwidth.BandwidthClaimed > 800 {
+			reward.Set(bandwidthReward2.Mul(decimal.NewFromInt(int64(bandwidth.BandwidthClaimed))).Div(decimal.NewFromBigInt(flowHarvest2, 0)).BigInt())
+		} else if bandwidth.BandwidthClaimed > 300 {
+			reward.Set(bandwidthReward3.Mul(decimal.NewFromInt(int64(bandwidth.BandwidthClaimed))).Div(decimal.NewFromBigInt(flowHarvest3, 0)).BigInt())
+		} else {
+			reward.Set(bandwidthReward4.Mul(decimal.NewFromInt(int64(bandwidth.BandwidthClaimed))).Div(decimal.NewFromBigInt(flowHarvest4, 0)).BigInt())
+		}
+		currentLockReward = append(currentLockReward, LockRewardRecord{
+			Target: minerAddress,
+			Amount: new(big.Int).Set(reward),
+			IsReward: true,
+		})
+	}
+	return currentLockReward
+}
+
+func accumulateFlowRewards(currentLockReward []LockRewardRecord, snap *Snapshot) ([]LockRewardRecord, *big.Int) {
+	oldCount := decimal.NewFromBigInt(snap.FlowTotal, 0).Div(decimal.NewFromInt(1073741824 * 1024))
+	totalFlow := big.NewInt(0)
+	for minerAddress, bandwidth := range snap.FlowMinerPrev {
+		if claimed, ok := snap.Bandwidth[minerAddress]; ok {
+			bandwidthHigh := uint64(claimed.BandwidthClaimed) * uint64(24 * 60 * 60)
+			if bandwidth.FlowValue > bandwidthHigh {
+				totalFlow = new(big.Int).Add(totalFlow, big.NewInt(int64(bandwidthHigh)))
+			} else {
+				totalFlow = new(big.Int).Add(totalFlow, big.NewInt(int64(bandwidth.FlowValue)))
+			}
+		}
+	}
+	egbCount := decimal.NewFromBigInt(new(big.Int).Add(snap.FlowTotal, totalFlow), 0).Div(decimal.NewFromInt(1073741824 * 1024))
+	count := decimal.New(1, -9)
+	if 0 < egbCount.Cmp(oldCount.Add(count)) {
+		count = egbCount.Sub(oldCount)
+	} else {
+		totalFlow = big.NewInt(1100)
+	}
+	countScale := decimal.NewFromInt(1).Sub(decimal.New(984505995, -9).Pow(count))
+	exponent := decimal.New(984505995, -9).Pow(oldCount)
+	egbScale := countScale.Mul(exponent)
+	egbReward := egbScale.Mul(decimal.NewFromBigInt(totalFlowReward, 0))
+	rewardScale := egbReward.Div(decimal.NewFromBigInt(totalFlow, 0))
+	flowHarvest := big.NewInt(0)
+	for minerAddress, bandwidth := range snap.FlowMinerPrev {
+		if claimed, ok := snap.Bandwidth[minerAddress]; ok {
+			reward := big.NewInt(0)
+			bandwidthHigh := uint64(claimed.BandwidthClaimed) * uint64(24 * 60 * 60)
+			if bandwidth.FlowValue > bandwidthHigh {
+				reward = decimal.NewFromInt(int64(bandwidthHigh)).Mul(rewardScale).BigInt()
+			} else {
+				reward = decimal.NewFromInt(int64(bandwidth.FlowValue)).Mul(rewardScale).BigInt()
+			}
+			flowHarvest = new(big.Int).Add(flowHarvest, reward)
+			currentLockReward = append(currentLockReward, LockRewardRecord{
+				Target: minerAddress,
+				Amount: new(big.Int).Set(reward),
+				IsReward: false,
+			})
+		}
+	}
+	return currentLockReward, flowHarvest
+}
+
 // AccumulateRewards credits the coinbase of the given block with the mining reward.
-func accumulateRewards(config *params.ChainConfig, state *state.StateDB, header *types.Header, snap *Snapshot, refundGas RefundGas) error {
+func accumulateRewards(config *params.ChainConfig, state *state.StateDB, header *types.Header, snap *Snapshot, refundGas RefundGas, gasReward *big.Int) {
 	// Calculate the block reword by year
 	blockNumPerYear := secondsPerYear / config.Alien.Period
-	initSignerBlockReward := new(big.Int).Div(totalBlockReward, big.NewInt(int64(2*blockNumPerYear)))
 	yearCount := header.Number.Uint64() / blockNumPerYear
-	blockReward := new(big.Int).Rsh(initSignerBlockReward, uint(yearCount))
-
+	exponent := decimal.New(890898718, -9)
+	exponent = exponent.Pow(decimal.NewFromInt(int64(yearCount)))
+	yearScale := decimal.New(109101282, -9)
+	yearScale = yearScale.Mul(exponent)
+	yearReward := yearScale.Mul(decimal.NewFromBigInt(totalBlockReward, 0))
+	initSignerBlockReward := yearReward.Div(decimal.NewFromInt(int64(blockNumPerYear)))
+	blockReward := initSignerBlockReward.BigInt()
 	minerReward := new(big.Int).Set(blockReward)
-	minerReward.Mul(minerReward, new(big.Int).SetUint64(snap.MinerReward))
-	minerReward.Div(minerReward, big.NewInt(1000)) // cause the reward is calculate by cnt per thousand
-
-	votersReward := blockReward.Sub(blockReward, minerReward)
-
-	// rewards for the voters
-	voteRewardMap, err := snap.calculateVoteReward(header.Coinbase, votersReward)
-	if err != nil {
-		return err
-	}
-	for voter, reward := range voteRewardMap {
-		state.AddBalance(voter, reward)
-	}
-
 	// calculate for proposal refund
 	for proposer, refund := range snap.calculateProposalRefund() {
 		state.AddBalance(proposer, refund)
-	}
-
-	scReward, minerLeft := snap.calculateSCReward(minerReward)
-	minerReward.Set(minerLeft)
-	// rewards for the side chain coinbase
-	for scCoinbase, reward := range scReward {
-		state.AddBalance(scCoinbase, reward)
 	}
 	// refund gas for custom txs
 	for sender, gas := range refundGas {
 		state.AddBalance(sender, gas)
 		minerReward.Sub(minerReward, gas)
 	}
-
-	// rewards for the miner, check minerReward value for refund gas
-	if minerReward.Cmp(big.NewInt(0)) > 0 {
-		state.AddBalance(header.Coinbase, minerReward)
+	// calc total bandwidth
+	flowHarvest := big.NewInt(0)
+	for _, bandwidth := range snap.Bandwidth {
+		flowHarvest = new(big.Int).Add(flowHarvest, big.NewInt(int64(bandwidth.BandwidthClaimed)))
 	}
-
-	return nil
+	snap.FlowHarvest = new(big.Int).Set(flowHarvest)
+	// rewards for the miner, check minerReward value for refund gas
+	balance := state.GetBalance(header.Coinbase)
+	if nil == gasReward {
+		paymentReward (header.Coinbase, minerReward, state, snap)
+	} else if 0 < balance.Cmp(gasReward) {
+		state.SubBalance(header.Coinbase, gasReward)
+		minerReward = new(big.Int).Add(minerReward, gasReward)
+		paymentReward (header.Coinbase, minerReward, state, snap)
+	} else {
+		state.SubBalance(header.Coinbase, balance)
+		gasReward = new(big.Int).Sub(gasReward, balance)
+		if 0 < minerReward.Cmp(gasReward) {
+			minerReward = new(big.Int).Sub(minerReward, gasReward)
+			paymentReward (header.Coinbase, minerReward, state, snap)
+		}
+	}
 }
 
 // Get the signer missing from last signer till header.Coinbase
@@ -1219,4 +1473,3 @@ func getSignerMissingTrantor(lastSigner common.Address, currentSigner common.Add
 	return signerMissing
 
 }
-

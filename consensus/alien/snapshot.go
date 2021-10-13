@@ -21,11 +21,12 @@ package alien
 import (
 	"encoding/json"
 	"errors"
+	"github.com/hashicorp/golang-lru"
 	"github.com/seaskycheng/sdvn/common"
+	"github.com/seaskycheng/sdvn/core/state"
 	"github.com/seaskycheng/sdvn/core/types"
 	"github.com/seaskycheng/sdvn/ethdb"
 	"github.com/seaskycheng/sdvn/params"
-	"github.com/hashicorp/golang-lru"
 	"math/big"
 	"sort"
 	"strings"
@@ -64,27 +65,14 @@ const (
 	bugFixBlockNumber = 14456164   // fix bug for header
 )
 
-var (
-	errIncorrectTallyCount = errors.New("incorrect tally count")
-	errAllStakeMissing     = errors.New("all stake for this signer is zero")
-)
-
-// SCCurrentBlockReward is base on scMaxCountPerPeriod = 6
-var SCCurrentBlockReward = map[uint64]map[uint64]uint64{1: {1: 100},
-	2: {1: 30, 2: 70},
-	3: {1: 15, 2: 30, 3: 55},
-	4: {1: 5, 2: 15, 3: 30, 4: 50},
-	5: {1: 5, 2: 10, 3: 15, 4: 25, 5: 45},
-	6: {1: 1, 2: 4, 3: 10, 4: 15, 5: 25, 6: 45}}
-
 // Score to calculate at one main chain block, for calculate the side chain reward
 type SCBlockReward struct {
-	RewardScoreMap map[common.Address]uint64 //sum(this value) in one period == 100
+	RewardScoreMap map[common.Address]uint64 `json:"rewardscore"` //sum(this value) in one period == 100
 }
 
 // Record for one side chain
 type SCReward struct {
-	SCBlockRewardMap map[uint64]*SCBlockReward
+	SCBlockRewardMap map[uint64]*SCBlockReward `json:"scblockrewards"`
 }
 
 type SCRentInfo struct {
@@ -116,6 +104,55 @@ type CCNotice struct {
 	ConfirmReceived map[common.Hash]NoticeCR    `json:"confirmReceived"` // record the confirm address
 }
 
+type RevenueParameter struct {
+	RevenueAddress  common.Address `json:"revenueaddress"`
+	RevenueContract common.Address `json:"contractaddress"`
+	MultiSignature  common.Address `json:"multisignatureaddress"`
+}
+
+type PledgeItem struct {
+	Amount          *big.Int       `json:"lockamount"`
+	reward          *big.Int       `json:"bandwidthreward"`
+	playment        *big.Int       `json:"playment"`
+	LockPeriod      uint32         `json:"lockperiod"`
+	RlsPeriod       uint32         `json:"releaseperiod"`
+	Interval        uint32         `json:"releaseinterval"`
+	StartHigh       uint64         `json:"startblocknumber"`
+	RevenueAddress  common.Address `json:"revenueaddress"`
+	RevenueContract common.Address `json:"contractaddress"`
+	MultiSignature  common.Address `json:"multisignatureaddress"`
+}
+
+type ClaimedBandwidth struct {
+	ISPQosID           uint32   `json:"ispqosid"`
+	BandwidthClaimed   uint32   `json:"bandwidthclaimed"`
+}
+
+type FlowMinerReport struct {
+	ReportNumber uint32
+	FlowValue    uint64
+}
+
+type LockParameter struct {
+	LockPeriod uint32 `json:"LockPeriod"`
+	RlsPeriod  uint32 `json:"ReleasePeriod"`
+	Interval   uint32 `json:"ReleaseInterval"`
+}
+
+type CandidateState struct {
+	SignerNumber uint64   `json:"signernumber"`
+	Stake        *big.Int `json:"stake"`
+}
+
+type SystemParameter struct {
+	ExchRate       uint32                    `json:"ExchangeRatio"`
+	OffLine        uint32                    `json:"OfflinePenalty"`
+	Deposit        *big.Int                  `json:"SeniorityThreshold"`
+	QosConfig      map[uint32]uint32         `json:"BandwidthQOS"`
+	ManagerAddress map[uint32]common.Address `json:"FoundationAddress"`
+	LockParameters map[uint32]*LockParameter `json:"PledgeParameter"`
+}
+
 // Snapshot is the state of the authorization voting at a given point in time.
 type Snapshot struct {
 	config   *params.AlienConfig // Consensus engine parameters to fine tune behavior
@@ -145,6 +182,35 @@ type Snapshot struct {
 	LocalNotice     *CCNotice                                         `json:"localNotice"`       // side chain record Notification
 	MinerReward     uint64                                            `json:"minerReward"`       // miner reward per thousand
 	MinVB           *big.Int                                          `json:"minVoterBalance"`   // min voter balance
+	FULBalance      map[common.Address]*big.Int                       `json:"fulbalance"`
+	RevenueNormal   map[common.Address]*RevenueParameter              `json:"normalrevenueaddress"`
+	RevenueFlow     map[common.Address]*RevenueParameter              `json:"flowrevenueaddress"`
+	CandidatePledge map[common.Address]*PledgeItem                    `json:"candidatepledge"`
+	TallyMiner      map[common.Address]*CandidateState                `json:"tallyminer"`        // Stake for each miner address
+	FlowPledge      map[common.Address]*PledgeItem                    `json:"flowminerpledge"`
+	Bandwidth       map[common.Address]*ClaimedBandwidth              `json:"claimedbandwidth"`
+	FlowHarvest     *big.Int                                          `json:"flowharvest"`
+	FlowRevenue     map[common.Address]map[uint64]*PledgeItem         `json:"flowrevenve"`
+	SystemConfig    SystemParameter                                   `json:"systemconfig"`
+	DayStartTime    uint64                                            `json:"dayStartTime"`
+	FlowMiner       map[common.Address]*FlowMinerReport               `json:"flowminer"`
+	FlowMinerPrev   map[common.Address]*FlowMinerReport               `json:"flowminer"`
+	FlowTotal       *big.Int                                          `json:"flowtotal"`
+}
+
+var (
+	errIncorrectTallyCount = errors.New("incorrect tally count")
+	errAllStakeMissing     = errors.New("all stake for this signer is zero")
+)
+
+// SCCurrentBlockReward is base on scMaxCountPerPeriod = 6
+var SCCurrentBlockReward = map[uint64]map[uint64]uint64{
+	1: {1: 100},
+	2: {1: 30, 2: 70},
+	3: {1: 15, 2: 30, 3: 55},
+	4: {1: 5, 2: 15, 3: 30, 4: 50},
+	5: {1: 5, 2: 10, 3: 15, 4: 25, 5: 45},
+	6: {1: 1, 2: 4, 3: 10, 4: 15, 5: 25, 6: 45},
 }
 
 // newSnapshot creates a new snapshot with the specified startup parameters. only ever use if for
@@ -178,6 +244,27 @@ func newSnapshot(config *params.AlienConfig, sigcache *lru.ARCCache, hash common
 		ProposalRefund:  make(map[uint64]map[common.Address]*big.Int),
 		MinerReward:     minerRewardPerThousand,
 		MinVB:           config.MinVoterBalance,
+		FULBalance:      make(map[common.Address]*big.Int),
+		RevenueNormal:   make(map[common.Address]*RevenueParameter),
+		RevenueFlow:     make(map[common.Address]*RevenueParameter),
+		CandidatePledge: make(map[common.Address]*PledgeItem),
+		TallyMiner:      make(map[common.Address]*CandidateState),
+		FlowPledge:      make(map[common.Address]*PledgeItem),
+		Bandwidth:       make(map[common.Address]*ClaimedBandwidth),
+		FlowHarvest:     big.NewInt(0),
+		FlowRevenue:     make(map[common.Address]map[uint64]*PledgeItem),
+		SystemConfig:    SystemParameter{
+			ExchRate:       10000,
+			OffLine:        10000,
+			Deposit:        new(big.Int).Mul(big.NewInt(32), big.NewInt(1e18)),
+			QosConfig:      make(map[uint32]uint32),
+			ManagerAddress: make(map[uint32]common.Address),
+			LockParameters: make(map[uint32]*LockParameter),
+		},
+		DayStartTime:    config.GenesisTimestamp,
+		FlowMiner:       make(map[common.Address]*FlowMinerReport),
+		FlowMinerPrev:   make(map[common.Address]*FlowMinerReport),
+		FlowTotal:       big.NewInt(0),
 	}
 	snap.HistoryHash = append(snap.HistoryHash, hash)
 
@@ -206,6 +293,25 @@ func newSnapshot(config *params.AlienConfig, sigcache *lru.ARCCache, hash common
 		}
 	}
 
+	snap.SystemConfig.LockParameters[sscEnumCndLock] = &LockParameter{
+		LockPeriod: uint32(180 * 24 * 60 * 60 / config.Period),
+		RlsPeriod:  0,
+		Interval:   0,
+	}
+	snap.SystemConfig.LockParameters[sscEnumFlwLock] = &LockParameter{
+		LockPeriod: uint32(180 * 24 * 60 * 60 / config.Period),
+		RlsPeriod:  0,
+		Interval:   0,
+	}
+	snap.SystemConfig.LockParameters[sscEnumRwdLock] = &LockParameter{
+		LockPeriod: uint32(30 * 24 * 60 * 60 / config.Period),
+		RlsPeriod:  uint32(180 * 24 * 60 * 60 / config.Period),
+		Interval:   uint32(24 * 60 * 60 / config.Period),
+	}
+	snap.SystemConfig.ManagerAddress[sscEnumExchRate] = common.HexToAddress("NX239029b5164798c7e3be4b85eb816fadc3f4e0e1") ////TODO seaskycheng
+	snap.SystemConfig.ManagerAddress[sscEnumSystem] = common.HexToAddress("NX239029b5164798c7e3be4b85eb816fadc3f4e0e1")   ////TODO seaskycheng
+	snap.SystemConfig.ManagerAddress[sscEnumWdthPnsh] = common.HexToAddress("NX239029b5164798c7e3be4b85eb816fadc3f4e0e1") ////TODO seaskycheng
+
 	return snap
 }
 
@@ -230,6 +336,47 @@ func loadSnapshot(config *params.AlienConfig, sigcache *lru.ARCCache, db ethdb.D
 	if snap.MinVB == nil {
 		snap.MinVB = new(big.Int).Set(minVoterBalance)
 	}
+
+	if 0 == snap.SystemConfig.ExchRate {
+		snap.SystemConfig.ExchRate = 10000
+	}
+	if 0 == snap.SystemConfig.OffLine {
+		snap.SystemConfig.OffLine = 10000
+	}
+	if nil == snap.SystemConfig.Deposit || 0 > snap.SystemConfig.Deposit.Cmp(big.NewInt(0)) {
+		snap.SystemConfig.Deposit = new(big.Int).Mul(big.NewInt(32), big.NewInt(1e18))
+	}
+	if _, ok := snap.SystemConfig.LockParameters[sscEnumCndLock]; !ok {
+		snap.SystemConfig.LockParameters[sscEnumCndLock] = &LockParameter{
+			LockPeriod: uint32(180 * 24 * 60 * 60 / config.Period),
+			RlsPeriod:  0,
+			Interval:   0,
+		}
+	}
+	if _, ok := snap.SystemConfig.LockParameters[sscEnumFlwLock]; !ok {
+		snap.SystemConfig.LockParameters[sscEnumFlwLock] = &LockParameter{
+			LockPeriod: uint32(180 * 24 * 60 * 60 / config.Period),
+			RlsPeriod:  0,
+			Interval:   0,
+		}
+	}
+	if _, ok := snap.SystemConfig.LockParameters[sscEnumRwdLock]; !ok {
+		snap.SystemConfig.LockParameters[sscEnumRwdLock] = &LockParameter{
+			LockPeriod: uint32(30 * 24 * 60 * 60 / config.Period),
+			RlsPeriod:  uint32(180 * 24 * 60 * 60 / config.Period),
+			Interval:   uint32(24 * 60 * 60 / config.Period),
+		}
+	}
+	if _, ok := snap.SystemConfig.ManagerAddress[sscEnumExchRate]; !ok {
+		snap.SystemConfig.ManagerAddress[sscEnumExchRate] = common.HexToAddress("NX239029b5164798c7e3be4b85eb816fadc3f4e0e1") ////TODO seaskycheng
+	}
+	if _, ok := snap.SystemConfig.ManagerAddress[sscEnumSystem]; !ok {
+		snap.SystemConfig.ManagerAddress[sscEnumSystem] = common.HexToAddress("NX239029b5164798c7e3be4b85eb816fadc3f4e0e1")   ////TODO seaskycheng
+	}
+	if _, ok := snap.SystemConfig.ManagerAddress[sscEnumWdthPnsh]; !ok {
+		snap.SystemConfig.ManagerAddress[sscEnumWdthPnsh] = common.HexToAddress("NX239029b5164798c7e3be4b85eb816fadc3f4e0e1") ////TODO seaskycheng
+	}
+
 	return snap, nil
 }
 
@@ -274,6 +421,27 @@ func (s *Snapshot) copy() *Snapshot {
 
 		MinerReward: s.MinerReward,
 		MinVB:       nil,
+		FULBalance:      make(map[common.Address]*big.Int),
+		RevenueNormal:   make(map[common.Address]*RevenueParameter),
+		RevenueFlow:     make(map[common.Address]*RevenueParameter),
+		CandidatePledge: make(map[common.Address]*PledgeItem),
+		TallyMiner:      make(map[common.Address]*CandidateState),
+		FlowPledge:      make(map[common.Address]*PledgeItem),
+		Bandwidth:       make(map[common.Address]*ClaimedBandwidth),
+		FlowHarvest:     s.FlowHarvest,
+		FlowRevenue:     make(map[common.Address]map[uint64]*PledgeItem),
+		SystemConfig:    SystemParameter{
+			ExchRate:       s.SystemConfig.ExchRate,
+			OffLine:        s.SystemConfig.OffLine,
+			Deposit:        s.SystemConfig.Deposit,
+			QosConfig:      make(map[uint32]uint32),
+			ManagerAddress: make(map[uint32]common.Address),
+			LockParameters: make(map[uint32]*LockParameter),
+		},
+		DayStartTime:    s.DayStartTime,
+		FlowMiner:       make(map[common.Address]*FlowMinerReport),
+		FlowMinerPrev:   make(map[common.Address]*FlowMinerReport),
+		FlowTotal:       new(big.Int).Set(s.FlowTotal),
 	}
 	copy(cpy.HistoryHash, s.HistoryHash)
 	copy(cpy.Signers, s.Signers)
@@ -384,6 +552,145 @@ func (s *Snapshot) copy() *Snapshot {
 		cpy.MinVB = new(big.Int).Set(s.MinVB)
 	}
 
+	for who, balance := range s.FULBalance {
+		cpy.FULBalance[who] = new(big.Int).Set(balance)
+	}
+	for who, revenue := range s.RevenueNormal {
+		cpy.RevenueNormal[who] = &RevenueParameter{
+			RevenueAddress:  revenue.RevenueAddress,
+			RevenueContract: revenue.RevenueContract,
+			MultiSignature:  revenue.MultiSignature,
+		}
+	}
+	for who, revenue := range s.RevenueFlow {
+		cpy.RevenueFlow[who] = &RevenueParameter{
+			RevenueAddress:  revenue.RevenueAddress,
+			RevenueContract: revenue.RevenueContract,
+			MultiSignature:  revenue.MultiSignature,
+		}
+	}
+	for who, pledge := range s.CandidatePledge {
+		cpy.CandidatePledge[who] = &PledgeItem{
+			Amount:          new(big.Int).Set(pledge.Amount),
+			reward:          new(big.Int).Set(pledge.reward),
+			playment:        new(big.Int).Set(pledge.playment),
+			LockPeriod:      pledge.LockPeriod,
+			RlsPeriod:       pledge.RlsPeriod,
+			Interval:        pledge.Interval,
+			StartHigh:       pledge.StartHigh,
+			RevenueAddress:  pledge.RevenueAddress,
+			RevenueContract: pledge.RevenueContract,
+			MultiSignature:  pledge.MultiSignature,
+		}
+	}
+	for who, status := range s.TallyMiner {
+		cpy.TallyMiner[who] = &CandidateState{
+			SignerNumber: status.SignerNumber,
+			Stake:        new(big.Int).Set(status.Stake),
+		}
+	}
+	for who, pledge := range s.FlowPledge {
+		cpy.FlowPledge[who] = &PledgeItem{
+			Amount:          new(big.Int).Set(pledge.Amount),
+			reward:          new(big.Int).Set(pledge.reward),
+			playment:        new(big.Int).Set(pledge.playment),
+			LockPeriod:      pledge.LockPeriod,
+			RlsPeriod:       pledge.RlsPeriod,
+			Interval:        pledge.Interval,
+			StartHigh:       pledge.StartHigh,
+			RevenueAddress:  pledge.RevenueAddress,
+			RevenueContract: pledge.RevenueContract,
+			MultiSignature:  pledge.MultiSignature,
+		}
+	}
+	for who, pledges := range s.FlowRevenue {
+		cpy.FlowRevenue[who] = make(map[uint64]*PledgeItem)
+		for when, pledge := range pledges {
+			cpy.FlowRevenue[who][when] = &PledgeItem{
+				Amount:          new(big.Int).Set(pledge.Amount),
+				reward:          new(big.Int).Set(pledge.reward),
+				playment:        new(big.Int).Set(pledge.playment),
+				LockPeriod:      pledge.LockPeriod,
+				RlsPeriod:       pledge.RlsPeriod,
+				Interval:        pledge.Interval,
+				StartHigh:       pledge.StartHigh,
+				RevenueAddress:  pledge.RevenueAddress,
+				RevenueContract: pledge.RevenueContract,
+				MultiSignature:  pledge.MultiSignature,
+			}
+		}
+	}
+	for who, bandwidth := range s.Bandwidth {
+		cpy.Bandwidth[who] = &ClaimedBandwidth {
+			ISPQosID:         bandwidth.ISPQosID,
+			BandwidthClaimed: bandwidth.BandwidthClaimed,
+		}
+	}
+	for who, qos := range s.SystemConfig.QosConfig {
+		cpy.SystemConfig.QosConfig[who] = qos
+	}
+	for who, lock := range s.SystemConfig.LockParameters {
+		cpy.SystemConfig.LockParameters[who] = &LockParameter {
+			LockPeriod: lock.LockPeriod,
+			RlsPeriod:  lock.RlsPeriod,
+			Interval:   lock.Interval,
+		}
+	}
+	for who, address := range s.SystemConfig.ManagerAddress {
+		cpy.SystemConfig.ManagerAddress[who] = address
+	}
+	for who, report := range s.FlowMiner {
+		cpy.FlowMiner[who] = &FlowMinerReport {
+			ReportNumber: report.ReportNumber,
+			FlowValue:    report.FlowValue,
+		}
+	}
+	for who, report := range s.FlowMinerPrev {
+		cpy.FlowMinerPrev[who] = &FlowMinerReport {
+			ReportNumber: report.ReportNumber,
+			FlowValue:    report.FlowValue,
+		}
+	}
+	if 0 == cpy.SystemConfig.ExchRate {
+		cpy.SystemConfig.ExchRate = 10000
+	}
+	if 0 == cpy.SystemConfig.OffLine {
+		cpy.SystemConfig.OffLine = 10000
+	}
+	if nil == cpy.SystemConfig.Deposit ||  0 > cpy.SystemConfig.Deposit.Cmp(big.NewInt(0)) {
+		cpy.SystemConfig.Deposit = new(big.Int).Mul(big.NewInt(32), big.NewInt(1e18))
+	}
+	if _, ok := cpy.SystemConfig.LockParameters[sscEnumCndLock]; !ok {
+		cpy.SystemConfig.LockParameters[sscEnumCndLock] = &LockParameter{
+			LockPeriod: uint32(180 * 24 * 60 * 60 / cpy.Period),
+			RlsPeriod:  0,
+			Interval:   0,
+		}
+	}
+	if _, ok := cpy.SystemConfig.LockParameters[sscEnumFlwLock]; !ok {
+		cpy.SystemConfig.LockParameters[sscEnumFlwLock] = &LockParameter{
+			LockPeriod: uint32(180 * 24 * 60 * 60 / cpy.Period),
+			RlsPeriod:  0,
+			Interval:   0,
+		}
+	}
+	if _, ok := cpy.SystemConfig.LockParameters[sscEnumRwdLock]; !ok {
+		cpy.SystemConfig.LockParameters[sscEnumRwdLock] = &LockParameter{
+			LockPeriod: uint32(30 * 24 * 60 * 60 / cpy.Period),
+			RlsPeriod:  uint32(180 * 24 * 60 * 60 / cpy.Period),
+			Interval:   uint32(24 * 60 * 60 / cpy.Period),
+		}
+	}
+	if _, ok := cpy.SystemConfig.ManagerAddress[sscEnumExchRate]; !ok {
+		cpy.SystemConfig.ManagerAddress[sscEnumExchRate] = common.HexToAddress("NX239029b5164798c7e3be4b85eb816fadc3f4e0e1") ////TODO seaskycheng
+	}
+	if _, ok := cpy.SystemConfig.ManagerAddress[sscEnumSystem]; !ok {
+		cpy.SystemConfig.ManagerAddress[sscEnumSystem] = common.HexToAddress("NX239029b5164798c7e3be4b85eb816fadc3f4e0e1")   ////TODO seaskycheng
+	}
+	if _, ok := cpy.SystemConfig.ManagerAddress[sscEnumWdthPnsh]; !ok {
+		cpy.SystemConfig.ManagerAddress[sscEnumWdthPnsh] = common.HexToAddress("NX239029b5164798c7e3be4b85eb816fadc3f4e0e1") ////TODO seaskycheng
+	}
+
 	return cpy
 }
 
@@ -483,6 +790,295 @@ func (s *Snapshot) apply(headers []*types.Header) (*Snapshot, error) {
 		snap.updateSnapshotBySCCharging(headerExtra.SideChainCharging, header.Number, header.Coinbase)
 
 		snap.updateSnapshotForExpired(header.Number)
+
+		rewardBlock := 60 * 60 / snap.config.Period
+		blockPerDay := 24 * 60 * 60 / snap.config.Period
+		if 0 == header.Number.Uint64() % blockPerDay && 0 != header.Number.Uint64() {
+			snap.DayStartTime = header.Time
+			snap.FlowMinerPrev = make(map[common.Address]*FlowMinerReport)
+			for address, item := range snap.FlowMiner {
+				snap.FlowMinerPrev[address] = &FlowMinerReport{
+					ReportNumber: item.ReportNumber,
+					FlowValue: item.FlowValue,
+				}
+			}
+			snap.FlowMiner = make(map[common.Address]*FlowMinerReport)
+		} else if rewardBlock == header.Number.Uint64() % blockPerDay && rewardBlock != header.Number.Uint64() {
+			for minerAddress, bandwidth := range snap.FlowMinerPrev {
+				if claimed, ok := snap.Bandwidth[minerAddress]; ok {
+					bandwidthHigh := uint64(claimed.BandwidthClaimed) * uint64(24 * 60 * 60)
+					if bandwidth.FlowValue > bandwidthHigh {
+						snap.FlowTotal = new(big.Int).Add(snap.FlowTotal, big.NewInt(int64(bandwidthHigh)))
+					} else {
+						snap.FlowTotal = new(big.Int).Add(snap.FlowTotal, big.NewInt(int64(bandwidth.FlowValue)))
+					}
+				}
+			}
+		}
+		for _, item := range headerExtra.MinerStake {
+			if _, ok := snap.TallyMiner[item.Target]; ok {
+				snap.TallyMiner[item.Target].Stake = new(big.Int).Set(item.Stake)
+			} else {
+				snap.TallyMiner[item.Target] = &CandidateState{
+					SignerNumber: 0,
+					Stake:        new(big.Int).Set(item.Stake),
+				}
+			}
+		}
+		for _, item := range headerExtra.GrantProfit {
+			if sscEnumCndLock == item.Which {
+				if pledge, ok := snap.CandidatePledge[item.MinerAddress]; ok {
+					pledge.playment = new(big.Int).Add(pledge.playment, item.Amount)
+					if 0 <= pledge.playment.Cmp(new(big.Int).Add(pledge.Amount, pledge.reward)) {
+						delete(snap.CandidatePledge, item.MinerAddress)
+					}
+				}
+			} else if sscEnumFlwLock == item.Which {
+				if pledge, ok := snap.FlowPledge[item.MinerAddress]; ok {
+					pledge.playment = new(big.Int).Add(pledge.playment, item.Amount)
+					if 0 <= pledge.playment.Cmp(new(big.Int).Add(pledge.Amount, pledge.reward)) {
+						delete(snap.FlowPledge, item.MinerAddress)
+					}
+				}
+			} else if sscEnumRwdLock == item.Which {
+				if pledge, ok := snap.FlowRevenue[item.MinerAddress][item.BlockNumber]; ok {
+					pledge.playment = new(big.Int).Add(pledge.playment, item.Amount)
+					if 0 <= pledge.playment.Cmp(new(big.Int).Add(pledge.Amount, pledge.reward)) {
+						delete(snap.FlowRevenue[item.MinerAddress], item.BlockNumber)
+						if 0 >= len(snap.FlowRevenue[item.MinerAddress]) {
+							delete(snap.FlowRevenue, item.MinerAddress)
+						}
+					}
+				}
+			}
+		}
+		for _, item := range headerExtra.LockReward {
+			if _, ok := snap.FlowRevenue[item.Target]; !ok {
+				snap.FlowRevenue[item.Target] = make(map[uint64]*PledgeItem)
+			}
+			if _, ok := snap.FlowRevenue[item.Target][header.Number.Uint64()]; !ok {
+				if revenue, ok := snap.RevenueFlow[item.Target]; ok {
+					snap.FlowRevenue[item.Target][header.Number.Uint64()] = &PledgeItem{
+						Amount:          big.NewInt(0),
+						reward:          big.NewInt(0),
+						playment:        big.NewInt(0),
+						LockPeriod:      snap.SystemConfig.LockParameters[sscEnumRwdLock].LockPeriod,
+						RlsPeriod:       snap.SystemConfig.LockParameters[sscEnumRwdLock].RlsPeriod,
+						Interval:        snap.SystemConfig.LockParameters[sscEnumRwdLock].Interval,
+						StartHigh:       header.Number.Uint64(),
+						RevenueAddress:  revenue.RevenueAddress,
+						RevenueContract: revenue.RevenueContract,
+						MultiSignature:  revenue.MultiSignature,
+					}
+				} else {
+					snap.FlowRevenue[item.Target][header.Number.Uint64()] = &PledgeItem{
+						Amount:          big.NewInt(0),
+						reward:          big.NewInt(0),
+						playment:        big.NewInt(0),
+						LockPeriod:      snap.SystemConfig.LockParameters[sscEnumRwdLock].LockPeriod,
+						RlsPeriod:       snap.SystemConfig.LockParameters[sscEnumRwdLock].RlsPeriod,
+						Interval:        snap.SystemConfig.LockParameters[sscEnumRwdLock].Interval,
+						StartHigh:       header.Number.Uint64(),
+						RevenueAddress:  item.Target,
+						RevenueContract: common.Address{},
+						MultiSignature:  common.Address{},
+					}
+				}
+			}
+			if item.IsReward {
+				snap.FlowRevenue[item.Target][header.Number.Uint64()].reward = new(big.Int).Add(snap.FlowRevenue[item.Target][header.Number.Uint64()].reward, item.Amount)
+			} else {
+				snap.FlowRevenue[item.Target][header.Number.Uint64()].Amount = new(big.Int).Add(snap.FlowRevenue[item.Target][header.Number.Uint64()].Amount, item.Amount)
+			}
+		}
+		for _, item := range headerExtra.ExchangeNFC {
+			s.FULBalance[item.Target] = new(big.Int).Add(s.FULBalance[item.Target], item.Amount)
+		}
+		for _, item := range headerExtra.DeviceBind {
+			if item.Type == 0 {
+				if item.Bind {
+					snap.RevenueNormal[item.Device] = &RevenueParameter{
+						RevenueAddress:  item.Revenue,
+						RevenueContract: item.Contract,
+						MultiSignature:  item.MultiSign,
+					}
+				} else {
+					delete(snap.RevenueNormal, item.Device)
+				}
+			} else {
+				if item.Bind {
+					snap.RevenueFlow[item.Device] = &RevenueParameter{
+						RevenueAddress:  item.Revenue,
+						RevenueContract: item.Contract,
+						MultiSignature:  item.MultiSign,
+					}
+				} else {
+					delete(snap.RevenueFlow, item.Device)
+				}
+			}
+		}
+		for _, item := range headerExtra.CandidatePledge {
+			if _, ok := snap.CandidatePledge[item.Target]; ok {
+				snap.CandidatePledge[item.Target].Amount = new(big.Int).Add(snap.CandidatePledge[item.Target].Amount, item.Amount)
+			} else {
+				snap.CandidatePledge[item.Target] = &PledgeItem{
+					Amount:          new(big.Int).Set(item.Amount),
+					reward:          big.NewInt(0),
+					playment:        big.NewInt(0),
+					LockPeriod:      0,
+					RlsPeriod:       0,
+					Interval:        0,
+					StartHigh:       0,
+					RevenueAddress:  common.Address{},
+					RevenueContract: common.Address{},
+					MultiSignature:  common.Address{},
+				}
+			}
+			if _, ok := snap.TallyMiner[item.Target]; !ok {
+				snap.TallyMiner[item.Target] = &CandidateState{
+					SignerNumber: 0,
+					Stake:        big.NewInt(0),
+				}
+			}
+		}
+		for _, item := range headerExtra.CandidatePunish {
+			if _, ok := snap.Punished[item.Target]; ok {
+				if snap.Punished[item.Target] > uint64(item.Credit) {
+					snap.Punished[item.Target] -= uint64(item.Credit)
+				} else {
+					delete(snap.Punished, item.Target)
+				}
+			}
+			if _, ok := snap.CandidatePledge[item.Target]; ok {
+				snap.CandidatePledge[item.Target].Amount = new(big.Int).Add(snap.CandidatePledge[item.Target].Amount, item.Amount)
+			} else {
+				snap.CandidatePledge[item.Target] = &PledgeItem{
+					Amount:          new(big.Int).Set(item.Amount),
+					reward:          big.NewInt(0),
+					playment:        big.NewInt(0),
+					LockPeriod:      0,
+					RlsPeriod:       0,
+					Interval:        0,
+					StartHigh:       0,
+					RevenueAddress:  common.Address{},
+					RevenueContract: common.Address{},
+					MultiSignature:  common.Address{},
+				}
+			}
+		}
+		for _, item := range headerExtra.CandidateExit {
+			if _, ok := snap.CandidatePledge[item]; ok {
+				snap.CandidatePledge[item].LockPeriod = snap.SystemConfig.LockParameters[sscEnumCndLock].LockPeriod
+				snap.CandidatePledge[item].RlsPeriod = snap.SystemConfig.LockParameters[sscEnumCndLock].RlsPeriod
+				snap.CandidatePledge[item].Interval = snap.SystemConfig.LockParameters[sscEnumCndLock].Interval
+				snap.CandidatePledge[item].StartHigh = snap.Number
+				if revenue, ok := snap.RevenueNormal[item]; ok {
+					snap.CandidatePledge[item].RevenueAddress = revenue.RevenueAddress
+					snap.CandidatePledge[item].RevenueContract = revenue.RevenueContract
+					snap.CandidatePledge[item].MultiSignature = revenue.MultiSignature
+				} else {
+					snap.CandidatePledge[item].RevenueAddress = item
+					snap.CandidatePledge[item].RevenueContract = common.Address{}
+					snap.CandidatePledge[item].MultiSignature = common.Address{}
+				}
+			}
+			if _, ok := snap.TallyMiner[item]; ok {
+				delete(snap.TallyMiner, item)
+			}
+		}
+		for _, item := range headerExtra.ClaimedBandwidth {
+			if _, ok := snap.FlowPledge[item.Target]; ok {
+				snap.FlowPledge[item.Target].Amount = new(big.Int).Add(snap.FlowPledge[item.Target].Amount, item.Amount)
+			} else {
+				snap.FlowPledge[item.Target] = &PledgeItem{
+					Amount:          new(big.Int).Set(item.Amount),
+					reward:          big.NewInt(0),
+					playment:        big.NewInt(0),
+					LockPeriod:      0,
+					RlsPeriod:       0,
+					Interval:        0,
+					StartHigh:       0,
+					RevenueAddress:  common.Address{},
+					RevenueContract: common.Address{},
+					MultiSignature:  common.Address{},
+				}
+			}
+			if _, ok := snap.Bandwidth[item.Target]; ok {
+				snap.Bandwidth[item.Target].BandwidthClaimed += item.Bandwidth
+			} else {
+				snap.Bandwidth[item.Target] = &ClaimedBandwidth{
+					ISPQosID:         item.ISPQosID,
+					BandwidthClaimed: item.Bandwidth,
+				}
+			}
+		}
+		for _, item := range headerExtra.FlowMinerExit {
+			if _, ok := snap.CandidatePledge[item]; ok {
+				snap.FlowPledge[item].LockPeriod = snap.SystemConfig.LockParameters[sscEnumFlwLock].LockPeriod
+				snap.FlowPledge[item].RlsPeriod = snap.SystemConfig.LockParameters[sscEnumFlwLock].RlsPeriod
+				snap.FlowPledge[item].Interval = snap.SystemConfig.LockParameters[sscEnumFlwLock].Interval
+				snap.FlowPledge[item].StartHigh = snap.Number
+				if revenue, ok := snap.RevenueFlow[item]; ok {
+					snap.FlowPledge[item].RevenueAddress = revenue.RevenueAddress
+					snap.FlowPledge[item].RevenueContract = revenue.RevenueContract
+					snap.FlowPledge[item].MultiSignature = revenue.MultiSignature
+				} else {
+					snap.FlowPledge[item].RevenueAddress = item
+					snap.FlowPledge[item].RevenueContract = common.Address{}
+					snap.FlowPledge[item].MultiSignature = common.Address{}
+				}
+			}
+			delete(snap.Bandwidth, item)
+		}
+		for _, item := range headerExtra.BandwidthPunish {
+			if _, ok := snap.Bandwidth[item.Target]; ok {
+				snap.Bandwidth[item.Target].BandwidthClaimed = item.WdthPnsh
+			}
+		}
+		for _, item := range headerExtra.FlowReport {
+			if item.ReportTime < snap.DayStartTime {
+				snap.FlowMinerPrev[item.Target] = &FlowMinerReport{
+					ReportNumber: item.ReportNumber,
+					FlowValue: item.FlowValue,
+				}
+			} else {
+				snap.FlowMiner[item.Target] = &FlowMinerReport{
+					ReportNumber: item.ReportNumber,
+					FlowValue: item.FlowValue,
+				}
+			}
+		}
+		if 0 < headerExtra.ConfigExchRate {
+			snap.SystemConfig.ExchRate = headerExtra.ConfigExchRate
+		}
+		if 0 < headerExtra.ConfigOffLine {
+			snap.SystemConfig.OffLine = headerExtra.ConfigOffLine
+		}
+		if 0 < headerExtra.ConfigDeposit.Cmp(big.NewInt(0)) {
+			snap.SystemConfig.Deposit = new(big.Int).Set(&headerExtra.ConfigDeposit)
+		}
+		if 0 < headerExtra.FlowHarvest.Cmp(big.NewInt(0)) {
+			snap.FlowHarvest = new(big.Int).Add(snap.FlowHarvest, &headerExtra.FlowHarvest)
+		}
+		for _, item := range headerExtra.ConfigISPQOS {
+			snap.SystemConfig.QosConfig[item.ISPID] = item.QOS
+		}
+		for _, item := range headerExtra.ManagerAddress {
+			snap.SystemConfig.ManagerAddress[item.who] = item.Target
+		}
+		for _, item := range headerExtra.LockParameters {
+			if _, ok := snap.SystemConfig.LockParameters[item.who]; ok {
+				snap.SystemConfig.LockParameters[item.who].LockPeriod = item.LockPeriod
+				snap.SystemConfig.LockParameters[item.who].RlsPeriod = item.RlsPeriod
+				snap.SystemConfig.LockParameters[item.who].Interval = item.Interval
+			} else {
+				snap.SystemConfig.LockParameters[item.who] = &LockParameter{
+					LockPeriod: item.LockPeriod,
+					RlsPeriod:  item.RlsPeriod,
+					Interval:   item.Interval,
+				}
+			}
+		}
 	}
 	snap.Number += uint64(len(headers))
 	snap.Hash = headers[len(headers)-1].Hash()
@@ -1289,5 +1885,34 @@ func (s *Snapshot) calculateSCReward(minerReward *big.Int) (map[common.Address]*
 		}
 	}
 	return scRewards, minerLeft
+}
 
+func (s *Snapshot) updateMinerState (state *state.StateDB) []MinerStakeRecord {
+	var tallyMiner []MinerStakeRecord
+	for minerAddress, pledge := range s.CandidatePledge {
+		if pledge.StartHigh > 0 {
+			continue
+		}
+		if credit, ok := s.Punished[minerAddress]; ok && defaultFullCredit-minCalSignerQueueCredit >= credit {
+			continue
+		}
+		amount := new(big.Int).Add(pledge.Amount, pledge.reward)
+		if revenue, ok := s.RevenueNormal[minerAddress]; ok {
+			amount = new(big.Int).Add(amount, state.GetBalance(revenue.RevenueAddress))
+		}
+		amount = new(big.Int).Add(amount, state.GetBalance(minerAddress))
+		if _, ok := s.TallyMiner[minerAddress]; ok {
+			s.TallyMiner[minerAddress].Stake = new(big.Int).Set(amount)
+		} else {
+			s.TallyMiner[minerAddress] = &CandidateState{
+				SignerNumber: 0,
+				Stake: new(big.Int).Set(amount),
+			}
+		}
+		tallyMiner = append(tallyMiner, MinerStakeRecord{
+			Target: minerAddress,
+			Stake:  new(big.Int).Set(amount),
+		})
+	}
+	return tallyMiner
 }

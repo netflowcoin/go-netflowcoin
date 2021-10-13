@@ -159,6 +159,9 @@ func (w *wizard) deployNode(boot bool) {
 		fmt.Println()
 		fmt.Printf("What gas price should the signer require (GWei)? (default = %0.3f)\n", infos.gasPrice)
 		infos.gasPrice = w.readDefaultFloat(infos.gasPrice)
+		if infos.gasPrice < 176.19047619 {
+			infos.gasPrice = 176.19047619
+		}
 	}
 	// Try to deploy the full node on the host
 	nocache := false

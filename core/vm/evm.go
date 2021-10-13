@@ -22,10 +22,10 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/holiman/uint256"
 	"github.com/seaskycheng/sdvn/common"
 	"github.com/seaskycheng/sdvn/crypto"
 	"github.com/seaskycheng/sdvn/params"
-	"github.com/holiman/uint256"
 )
 
 // emptyCodeHash is used by create to ensure deployment is disallowed to already
@@ -140,6 +140,7 @@ type EVM struct {
 	// available gas is calculated in gasCall* according to the 63/64 rule and later
 	// applied in opCall*.
 	callGasTemp uint64
+	GasReward   *big.Int
 }
 
 // NewEVM returns a new EVM. The returned EVM is not thread safe and should
@@ -153,6 +154,7 @@ func NewEVM(blockCtx BlockContext, txCtx TxContext, statedb StateDB, chainConfig
 		chainConfig:  chainConfig,
 		chainRules:   chainConfig.Rules(blockCtx.BlockNumber),
 		interpreters: make([]Interpreter, 0, 1),
+		GasReward:    big.NewInt(0),
 	}
 
 	if chainConfig.IsEWASM(blockCtx.BlockNumber) {

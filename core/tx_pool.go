@@ -164,7 +164,7 @@ var DefaultTxPoolConfig = TxPoolConfig{
 	Journal:   "transactions.rlp",
 	Rejournal: time.Hour,
 
-	PriceLimit: 1,
+	PriceLimit: 176190476190,
 	PriceBump:  10,
 
 	AccountSlots: 16,
@@ -183,7 +183,7 @@ func (config *TxPoolConfig) sanitize() TxPoolConfig {
 		log.Warn("Sanitizing invalid txpool journal time", "provided", conf.Rejournal, "updated", time.Second)
 		conf.Rejournal = time.Second
 	}
-	if conf.PriceLimit < 1 {
+	if conf.PriceLimit < 176190476190 {
 		log.Warn("Sanitizing invalid txpool price limit", "provided", conf.PriceLimit, "updated", DefaultTxPoolConfig.PriceLimit)
 		conf.PriceLimit = DefaultTxPoolConfig.PriceLimit
 	}
@@ -427,6 +427,9 @@ func (pool *TxPool) GasPrice() *big.Int {
 // SetGasPrice updates the minimum price required by the transaction pool for a
 // new transaction, and drops all transactions below this threshold.
 func (pool *TxPool) SetGasPrice(price *big.Int) {
+	if 0 > price.Cmp(big.NewInt(176190476190)) {
+		price = big.NewInt(176190476190)
+	}
 	pool.mu.Lock()
 	defer pool.mu.Unlock()
 

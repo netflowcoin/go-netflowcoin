@@ -101,6 +101,38 @@ func (s *Snapshot) buildTallySlice() TallySlice {
 	return tallySlice
 }
 
+func (s *Snapshot) buildTallyMiner() TallySlice {
+	var tallySlice TallySlice
+	for address, stake := range s.TallyMiner {
+		if pledge, ok := s.CandidatePledge[address]; !ok || 0 < pledge.StartHigh {
+			continue
+		}
+		if _, ok := s.Punished[address]; ok {
+			var creditWeight uint64
+			if s.Punished[address] > defaultFullCredit-minCalSignerQueueCredit {
+				creditWeight = minCalSignerQueueCredit
+			} else {
+				creditWeight = defaultFullCredit - s.Punished[address]
+			}
+			tallySlice = append(tallySlice, TallyItem{address, new(big.Int).Mul(stake.Stake, big.NewInt(int64(creditWeight)))})
+		} else {
+			tallySlice = append(tallySlice, TallyItem{address, new(big.Int).Mul(stake.Stake, big.NewInt(defaultFullCredit))})
+		}
+	}
+	return tallySlice
+}
+
+func (s *Snapshot) rebuildTallyMiner(miners TallySlice) TallySlice {
+	var tallySlice TallySlice
+	for _, item := range miners {
+		if status, ok := s.TallyMiner[item.addr]; ok {
+			tallySlice = append(tallySlice, TallyItem{item.addr, new(big.Int).Div(item.stake, big.NewInt(int64(status.SignerNumber + 1)))})
+		}
+	}
+	sort.Sort(tallySlice)
+	return tallySlice
+}
+
 func (s *Snapshot) createSignerQueue() ([]common.Address, error) {
 
 	if (s.Number+1)%s.config.MaxSignerCount != 0 || s.Hash != s.HistoryHash[len(s.HistoryHash)-1] {
@@ -117,52 +149,125 @@ func (s *Snapshot) createSignerQueue() ([]common.Address, error) {
 		// other loop end just reset the order of signers by block hash (nearly random)
 		tallySlice := s.buildTallySlice()
 		sort.Sort(TallySlice(tallySlice))
+		tallyMiner := s.buildTallyMiner()
+		sort.Sort(TallySlice(tallySlice))
 		queueLength := int(s.config.MaxSignerCount)
-		if queueLength > len(tallySlice) {
-			queueLength = len(tallySlice)
-		}
-
-		if queueLength == defaultOfficialMaxSignerCount && len(tallySlice) > defaultOfficialThirdLevelCount {
-			for i, tallyItem := range tallySlice[:defaultOfficialFirstLevelCount] {
-				signerSlice = append(signerSlice, SignerItem{tallyItem.addr, s.HistoryHash[len(s.HistoryHash)-1-i]})
+		if queueLength >= defaultOfficialMaxSignerCount {
+			mainNumber := (9 * queueLength + defaultOfficialMaxSignerCount - 1) / defaultOfficialMaxSignerCount
+			minerNumber := 12 * queueLength / defaultOfficialMaxSignerCount
+			if minerNumber > len(tallyMiner) {
+				minerNumber = len(tallyMiner)
+				mainNumber = queueLength - minerNumber
+				for i, tallyItem := range tallyMiner {
+					signerSlice = append(signerSlice, SignerItem{tallyItem.addr, s.HistoryHash[len(s.HistoryHash)-1-i]})
+					tallyItem.stake = new(big.Int).Add(tallyItem.stake, big.NewInt(1))
+				}
+			} else {
+				mainNumber = queueLength - minerNumber
+				needMiner := (9 * minerNumber + 3) / 4
+				if needMiner > len(tallyMiner) {
+					tallyMiner = s.rebuildTallyMiner (tallyMiner)
+					for i, tallyItem := range tallyMiner[:minerNumber] {
+						signerSlice = append(signerSlice, SignerItem{tallyItem.addr, s.HistoryHash[len(s.HistoryHash)-1-i]})
+						tallyItem.stake = new(big.Int).Add(tallyItem.stake, big.NewInt(1))
+					}
+				} else {
+					var LevelSlice TallySlice
+					index := int(0)
+					firstNumber := minerNumber / 2
+					firstTotal := 2 * len(tallyMiner) / 9
+					for _, tallyItem := range tallyMiner[:firstTotal] {
+						LevelSlice = append(LevelSlice, TallyItem{tallyItem.addr, tallyItem.stake})
+					}
+					LevelSlice = s.rebuildTallyMiner(LevelSlice)
+					for i, tallyItem := range LevelSlice[:firstNumber] {
+						signerSlice = append(signerSlice, SignerItem{tallyItem.addr, s.HistoryHash[len(s.HistoryHash)-1-i-index]})
+						tallyItem.stake = new(big.Int).Add(tallyItem.stake, big.NewInt(1))
+					}
+					index += firstNumber
+					secondNumber := minerNumber / 3
+					secondTotal := 5 * len(tallyMiner) / 9
+					for _, tallyItem := range tallyMiner[firstTotal:secondTotal] {
+						LevelSlice = append(LevelSlice, TallyItem{tallyItem.addr, tallyItem.stake})
+					}
+					LevelSlice = s.rebuildTallyMiner(LevelSlice)
+					for i, tallyItem := range LevelSlice[:secondNumber] {
+						signerSlice = append(signerSlice, SignerItem{tallyItem.addr, s.HistoryHash[len(s.HistoryHash)-1-i-index]})
+						tallyItem.stake = new(big.Int).Add(tallyItem.stake, big.NewInt(1))
+					}
+					index += secondNumber
+					lastNumber := minerNumber - index
+					for _, tallyItem := range tallyMiner[secondTotal:] {
+						LevelSlice = append(LevelSlice, TallyItem{tallyItem.addr, tallyItem.stake})
+					}
+					LevelSlice = s.rebuildTallyMiner(LevelSlice)
+					for i, tallyItem := range LevelSlice[:lastNumber] {
+						signerSlice = append(signerSlice, SignerItem{tallyItem.addr, s.HistoryHash[len(s.HistoryHash)-1-i-index]})
+						tallyItem.stake = new(big.Int).Add(tallyItem.stake, big.NewInt(1))
+					}
+				}
 			}
-			var signerSecondLevelSlice, signerThirdLevelSlice, signerLastLevelSlice SignerSlice
-			// 60%
-			for i, tallyItem := range tallySlice[defaultOfficialFirstLevelCount:defaultOfficialSecondLevelCount] {
-				signerSecondLevelSlice = append(signerSecondLevelSlice, SignerItem{tallyItem.addr, s.HistoryHash[len(s.HistoryHash)-1-i]})
+			levelTotal := (10 * mainNumber + 6) / 7
+			if mainNumber > len(tallySlice) {
+				mainSigner := len(tallySlice)
+				for i := 0; i < mainNumber; i++ {
+					signerSlice = append(signerSlice, SignerItem{tallySlice[i % mainSigner].addr, s.HistoryHash[len(s.HistoryHash)-1-i-minerNumber]})
+				}
+			} else if levelTotal >= len(tallySlice) || 21 > mainNumber {
+				for i := 0; i < mainNumber; i++ {
+					signerSlice = append(signerSlice, SignerItem{tallySlice[i].addr, s.HistoryHash[len(s.HistoryHash)-1-i-minerNumber]})
+				}
+			} else {
+				index := minerNumber
+				levelNumber := levelTotal / 3
+				firstLevelNumber := levelTotal - 2 * levelNumber
+				secondLevelNumber := (16 * mainNumber + 11) / 21 - firstLevelNumber
+				secondLevelTotal := firstLevelNumber + levelNumber
+				thirdLevelNumber := (20 * mainNumber + 11) / 21 - firstLevelNumber - secondLevelNumber
+				lastLevelNumber := mainNumber - firstLevelNumber - secondLevelNumber - thirdLevelNumber
+				for i, tallyItem := range tallySlice[:firstLevelNumber] {
+					signerSlice = append(signerSlice, SignerItem{tallyItem.addr, s.HistoryHash[len(s.HistoryHash)-1-i-index]})
+				}
+				index += firstLevelNumber
+				var signerSecondLevelSlice, signerThirdLevelSlice, signerLastLevelSlice SignerSlice
+				// 60%
+				for i, tallyItem := range tallySlice[firstLevelNumber:secondLevelTotal] {
+					signerSecondLevelSlice = append(signerSecondLevelSlice, SignerItem{tallyItem.addr, s.HistoryHash[len(s.HistoryHash)-1-i-index]})
+				}
+				sort.Sort(SignerSlice(signerSecondLevelSlice))
+				signerSlice = append(signerSlice, signerSecondLevelSlice[:secondLevelNumber]...)
+				index += secondLevelNumber
+				// 40%
+				for i, tallyItem := range tallySlice[secondLevelTotal:levelTotal] {
+					signerThirdLevelSlice = append(signerThirdLevelSlice, SignerItem{tallyItem.addr, s.HistoryHash[len(s.HistoryHash)-1-i-index]})
+				}
+				sort.Sort(SignerSlice(signerThirdLevelSlice))
+				signerSlice = append(signerSlice, signerThirdLevelSlice[:thirdLevelNumber]...)
+				index += thirdLevelNumber
+				// choose 1 from last
+				maxValidCount := queueLength
+				if maxValidCount > len(tallySlice) {
+					maxValidCount = len(tallySlice)
+				}
+				for i, tallyItem := range tallySlice[levelTotal:maxValidCount] {
+					signerLastLevelSlice = append(signerLastLevelSlice, SignerItem{tallyItem.addr, s.HistoryHash[len(s.HistoryHash)-1-i-index]})
+				}
+				sort.Sort(SignerSlice(signerLastLevelSlice))
+				signerSlice = append(signerSlice, signerLastLevelSlice[:lastLevelNumber]...)
 			}
-			sort.Sort(SignerSlice(signerSecondLevelSlice))
-			signerSlice = append(signerSlice, signerSecondLevelSlice[:6]...)
-			// 40%
-			for i, tallyItem := range tallySlice[defaultOfficialSecondLevelCount:defaultOfficialThirdLevelCount] {
-				signerThirdLevelSlice = append(signerThirdLevelSlice, SignerItem{tallyItem.addr, s.HistoryHash[len(s.HistoryHash)-1-i]})
-			}
-			sort.Sort(SignerSlice(signerThirdLevelSlice))
-			signerSlice = append(signerSlice, signerThirdLevelSlice[:4]...)
-			// choose 1 from last
-			maxValidCount := defaultOfficialMaxValidCount
-			if maxValidCount > len(tallySlice) {
-				maxValidCount = len(tallySlice)
-			}
-			for i, tallyItem := range tallySlice[defaultOfficialThirdLevelCount:maxValidCount] {
-				signerLastLevelSlice = append(signerLastLevelSlice, SignerItem{tallyItem.addr, s.HistoryHash[len(s.HistoryHash)-1-i]})
-			}
-			sort.Sort(SignerSlice(signerLastLevelSlice))
-			signerSlice = append(signerSlice, signerLastLevelSlice[0])
-
 		} else {
+			if queueLength > len(tallySlice) {
+				queueLength = len(tallySlice)
+			}
 			for i, tallyItem := range tallySlice[:queueLength] {
 				signerSlice = append(signerSlice, SignerItem{tallyItem.addr, s.HistoryHash[len(s.HistoryHash)-1-i]})
 			}
-
 		}
-
 	} else {
 		for i, signer := range s.Signers {
 			signerSlice = append(signerSlice, SignerItem{*signer, s.HistoryHash[len(s.HistoryHash)-1-i]})
 		}
 	}
-
 	sort.Sort(SignerSlice(signerSlice))
 	// Set the top candidates in random order base on block hash
 	if len(signerSlice) == 0 {
@@ -173,5 +278,4 @@ func (s *Snapshot) createSignerQueue() ([]common.Address, error) {
 	}
 
 	return topStakeAddress, nil
-
 }

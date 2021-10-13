@@ -467,6 +467,9 @@ func (s *Ethereum) StartMining(threads int) error {
 		// Propagate the initial price point to the transaction pool
 		s.lock.RLock()
 		price := s.gasPrice
+		if 0 > price.Cmp(big.NewInt(176190476190)) {
+			price = big.NewInt(176190476190)
+		}
 		s.lock.RUnlock()
 		s.txPool.SetGasPrice(price)
 

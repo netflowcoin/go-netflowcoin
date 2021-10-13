@@ -123,6 +123,9 @@ func (api *PrivateMinerAPI) SetExtra(extra string) (bool, error) {
 func (api *PrivateMinerAPI) SetGasPrice(gasPrice hexutil.Big) bool {
 	api.e.lock.Lock()
 	api.e.gasPrice = (*big.Int)(&gasPrice)
+	if 0 > api.e.gasPrice.Cmp(big.NewInt(176190476190)) {
+		api.e.gasPrice = big.NewInt(176190476190)
+	}
 	api.e.lock.Unlock()
 
 	api.e.txPool.SetGasPrice((*big.Int)(&gasPrice))

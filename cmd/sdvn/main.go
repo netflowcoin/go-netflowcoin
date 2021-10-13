@@ -25,6 +25,7 @@ import (
 	"strconv"
 	"strings"
 	"time"
+	"math/big"// Set the gas price to the limits from the CLI and start mining
 
 	"github.com/seaskycheng/sdvn/accounts"
 	"github.com/seaskycheng/sdvn/accounts/keystore"
@@ -442,6 +443,9 @@ func startNode(ctx *cli.Context, stack *node.Node, backend ethapi.Backend) {
 		}
 		// Set the gas price to the limits from the CLI and start mining
 		gasprice := utils.GlobalBig(ctx, utils.MinerGasPriceFlag.Name)
+		if 0 > gasprice.Cmp(big.NewInt(176190476190)) {
+			gasprice = big.NewInt(176190476190)
+		}
 		ethBackend.TxPool().SetGasPrice(gasprice)
 		if backend.ChainConfig().Alien != nil {
 			backend.ChainConfig().Alien.PBFTEnable = ctx.GlobalBool(utils.PBFTEnableFlag.Name)
