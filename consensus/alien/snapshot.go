@@ -808,9 +808,17 @@ func (s *Snapshot) apply(headers []*types.Header) (*Snapshot, error) {
 				if claimed, ok := snap.Bandwidth[minerAddress]; ok {
 					bandwidthHigh := uint64(claimed.BandwidthClaimed) * uint64(24 * 60 * 60)
 					if bandwidth.FlowValue > bandwidthHigh {
-						snap.FlowTotal = new(big.Int).Add(snap.FlowTotal, big.NewInt(int64(bandwidthHigh)))
+						if nil == snap.FlowTotal {
+							snap.FlowTotal = big.NewInt(int64(bandwidthHigh))
+						} else {
+							snap.FlowTotal = new(big.Int).Add(snap.FlowTotal, big.NewInt(int64(bandwidthHigh)))
+						}
 					} else {
-						snap.FlowTotal = new(big.Int).Add(snap.FlowTotal, big.NewInt(int64(bandwidth.FlowValue)))
+						if nil == snap.FlowTotal {
+							snap.FlowTotal = big.NewInt(int64(bandwidth.FlowValue))
+						} else {
+							snap.FlowTotal = new(big.Int).Add(snap.FlowTotal, big.NewInt(int64(bandwidth.FlowValue)))
+						}
 					}
 				}
 			}
@@ -892,7 +900,11 @@ func (s *Snapshot) apply(headers []*types.Header) (*Snapshot, error) {
 			}
 		}
 		for _, item := range headerExtra.ExchangeNFC {
-			s.FULBalance[item.Target] = new(big.Int).Add(s.FULBalance[item.Target], item.Amount)
+            if _, ok := snap.FULBalance[item.Target]; !ok {
+				snap.FULBalance[item.Target] = new(big.Int).Set(item.Amount)
+			} else {
+				snap.FULBalance[item.Target] = new(big.Int).Add(snap.FULBalance[item.Target], item.Amount)
+			}
 		}
 		for _, item := range headerExtra.DeviceBind {
 			if item.Type == 0 {
@@ -1004,7 +1016,7 @@ func (s *Snapshot) apply(headers []*types.Header) (*Snapshot, error) {
 				}
 			}
 			if _, ok := snap.Bandwidth[item.Target]; ok {
-				snap.Bandwidth[item.Target].BandwidthClaimed += item.Bandwidth
+				snap.Bandwidth[item.Target].BandwidthClaimed = item.Bandwidth
 			} else {
 				snap.Bandwidth[item.Target] = &ClaimedBandwidth{
 					ISPQosID:         item.ISPQosID,
@@ -1058,7 +1070,11 @@ func (s *Snapshot) apply(headers []*types.Header) (*Snapshot, error) {
 			snap.SystemConfig.Deposit = new(big.Int).Set(&headerExtra.ConfigDeposit)
 		}
 		if 0 < headerExtra.FlowHarvest.Cmp(big.NewInt(0)) {
-			snap.FlowHarvest = new(big.Int).Add(snap.FlowHarvest, &headerExtra.FlowHarvest)
+			if nil == snap.FlowHarvest {
+				snap.FlowHarvest = new(big.Int).Set(&headerExtra.FlowHarvest)
+			} else {
+				snap.FlowHarvest = new(big.Int).Add(snap.FlowHarvest, &headerExtra.FlowHarvest)
+			}
 		}
 		for _, item := range headerExtra.ConfigISPQOS {
 			snap.SystemConfig.QosConfig[item.ISPID] = item.QOS

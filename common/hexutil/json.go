@@ -122,6 +122,24 @@ func UnmarshalFixedText(typname string, input, out []byte) error {
 	return nil
 }
 
+func UnmarshalFixedText1(typname string, input, out []byte) error {
+	raw, err := checkText(input, false)
+	if err != nil {
+		return err
+	}
+	if len(raw)/2 != len(out) {
+		return fmt.Errorf("hex string has length %d, want %d for %s", len(raw), len(out)*2, typname)
+	}
+	// Pre-verify syntax before modifying out.
+	for _, b := range raw {
+		if decodeNibble(b) == badNibble {
+			return ErrSyntax
+		}
+	}
+	hex.Decode(out, raw)
+	return nil
+}
+
 // UnmarshalFixedUnprefixedText decodes the input as a string with optional 0x prefix. The
 // length of out determines the required input length. This function is commonly used to
 // implement the UnmarshalText method for fixed-size types.
@@ -194,6 +212,34 @@ func (b *Big) UnmarshalText(input []byte) error {
 	dec.SetBits(words)
 	*b = (Big)(dec)
 	return nil
+}
+
+func UnmarshalText1(input []byte) (*big.Int, error) {
+	raw, err := checkNumberText1(input)
+	if err != nil {
+		return nil, err
+	}
+	if len(raw) > 64 {
+		return nil, ErrBig256Range
+	}
+	words := make([]big.Word, len(raw)/bigWordNibbles+1)
+	end := len(raw)
+	for i := range words {
+		start := end - bigWordNibbles
+		if start < 0 {
+			start = 0
+		}
+		for ri := start; ri < end; ri++ {
+			nib := decodeNibble(raw[ri])
+			if nib == badNibble {
+				return nil, ErrSyntax
+			}
+			words[i] *= 16
+			words[i] += big.Word(nib)
+		}
+		end = start
+	}
+	return new(big.Int).SetBits(words), nil
 }
 
 // ToInt converts b to a big.Int.
@@ -360,6 +406,19 @@ func checkNumberText(input []byte) (raw []byte, err error) {
 	}
 	if len(input) > 1 && input[0] == '0' {
 		return nil, ErrLeadingZero
+	}
+	return input, nil
+}
+
+func checkNumberText1(input []byte) (raw []byte, err error) {
+	if len(input) == 0 {
+		return nil, nil // empty strings are allowed
+	}
+	if bytesHave0xPrefix(input) {
+		input = input[2:]
+	}
+	if len(input) == 0 {
+		return nil, nil
 	}
 	return input, nil
 }

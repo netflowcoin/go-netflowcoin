@@ -1,3 +1,7 @@
+20211019 seaskycheng V0.5.1
+         fix first snapshot
+		 fix address UnmarshalText without prefix
+		 fix bigint UnmarshalText without prefix
 20211013 seaskycheng V0.5
          limit min gas price is 0.0037NFC
          add miner bind revenue address

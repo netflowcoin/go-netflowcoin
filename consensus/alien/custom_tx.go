@@ -20,6 +20,7 @@ package alien
 
 import (
 	"fmt"
+	"github.com/seaskycheng/sdvn/common/hexutil"
 	"math/big"
 	"strconv"
 	"strings"
@@ -431,7 +432,7 @@ func (a *Alien) processCustomTx(headerExtra HeaderExtra, chain consensus.ChainHe
 	refundGas = make(map[common.Address]*big.Int)
 	refundHash = make(map[common.Hash]RefundPair)
 	number = header.Number.Uint64()
-	if number > 1 {
+	if number >= 1 {
 		snap, err = a.snapshot(chain, number-1, header.ParentHash, nil, nil, defaultLoopCntRecalculateSigners)
 		if err != nil {
 			return headerExtra, nil, err
@@ -885,12 +886,13 @@ func (a *Alien) processExchangeNFC (currentExchangeNFC []ExchangeNFCRecord, txDa
 		Target: common.Address{},
 		Amount: big.NewInt(0),
 	}
-	if err := exchangeNFC.Target.UnmarshalText([]byte(txDataInfo[nfcPosExchAddress])); err != nil {
+	if err := exchangeNFC.Target.UnmarshalText1([]byte(txDataInfo[nfcPosExchAddress])); err != nil {
 		log.Warn("Exchange NFC to FUL fail", "address", txDataInfo[nfcPosExchAddress])
 		return currentExchangeNFC
 	}
 	amount := big.NewInt(0)
-	if err := amount.UnmarshalText([]byte(txDataInfo[nfcPosExchValue])); err != nil {
+	var err error
+	if amount, err = hexutil.UnmarshalText1([]byte(txDataInfo[nfcPosExchValue])); err != nil {
 		log.Warn("Exchange NFC to FUL fail", "number", txDataInfo[nfcPosExchValue])
 		return currentExchangeNFC
 	}
@@ -927,7 +929,7 @@ func (a *Alien) processDeviceBind (currentDeviceBind []DeviceBindRecord, txDataI
 		Type: 0,
 		Bind: true,
 	}
-	if err := deviceBind.Device.UnmarshalText([]byte(txDataInfo[nfcPosMinerAddress])); err != nil {
+	if err := deviceBind.Device.UnmarshalText1([]byte(txDataInfo[nfcPosMinerAddress])); err != nil {
 		log.Warn("Device bind revenue", "miner address", txDataInfo[nfcPosMinerAddress])
 		return currentDeviceBind
 	}
@@ -948,11 +950,11 @@ func (a *Alien) processDeviceBind (currentDeviceBind []DeviceBindRecord, txDataI
 		log.Warn("Device bind revenue", "type", txDataInfo[nfcPosRevenueType])
 		return currentDeviceBind
 	}
-	if err := deviceBind.Contract.UnmarshalText([]byte(txDataInfo[nfcPosRevenueContract])); err != nil {
+	if err := deviceBind.Contract.UnmarshalText1([]byte(txDataInfo[nfcPosRevenueContract])); err != nil {
 		log.Warn("Device bind revenue", "contract address", txDataInfo[nfcPosRevenueContract])
 		return currentDeviceBind
 	}
-	if err := deviceBind.MultiSign.UnmarshalText([]byte(txDataInfo[nfcPosMiltiSign])); err != nil {
+	if err := deviceBind.MultiSign.UnmarshalText1([]byte(txDataInfo[nfcPosMiltiSign])); err != nil {
 		log.Warn("Device bind revenue", "milti-signature address", txDataInfo[nfcPosRevenueContract])
 		return currentDeviceBind
 	}
@@ -998,7 +1000,7 @@ func (a *Alien) processDeviceUnbind (currentDeviceBind []DeviceBindRecord, txDat
 		Type: 0,
 		Bind: false,
 	}
-	if err := deviceBind.Device.UnmarshalText([]byte(txDataInfo[nfcPosMinerAddress])); err != nil {
+	if err := deviceBind.Device.UnmarshalText1([]byte(txDataInfo[nfcPosMinerAddress])); err != nil {
 		log.Warn("Device unbind revenue", "miner address", txDataInfo[nfcPosMinerAddress])
 		return currentDeviceBind
 	}
@@ -1064,11 +1066,11 @@ func (a *Alien) processDeviceRebind (currentDeviceBind []DeviceBindRecord, txDat
 		Type: 0,
 		Bind: true,
 	}
-	if err := deviceBind.Device.UnmarshalText([]byte(txDataInfo[nfcPosMinerAddress])); err != nil {
+	if err := deviceBind.Device.UnmarshalText1([]byte(txDataInfo[nfcPosMinerAddress])); err != nil {
 		log.Warn("Device rebind revenue", "miner address", txDataInfo[nfcPosMinerAddress])
 		return currentDeviceBind
 	}
-	if err := deviceBind.Revenue.UnmarshalText([]byte(txDataInfo[nfcPosRevenueAddress])); err != nil {
+	if err := deviceBind.Revenue.UnmarshalText1([]byte(txDataInfo[nfcPosRevenueAddress])); err != nil {
 		log.Warn("Device rebind revenue", "revenue address", txDataInfo[nfcPosMinerAddress])
 		return currentDeviceBind
 	}
@@ -1107,11 +1109,11 @@ func (a *Alien) processDeviceRebind (currentDeviceBind []DeviceBindRecord, txDat
 		log.Warn("Device rebind revenue", "type", txDataInfo[nfcPosRevenueType])
 		return currentDeviceBind
 	}
-	if err := deviceBind.Contract.UnmarshalText([]byte(txDataInfo[nfcPosRevenueContract])); err != nil {
+	if err := deviceBind.Contract.UnmarshalText1([]byte(txDataInfo[nfcPosRevenueContract])); err != nil {
 		log.Warn("Device rebind revenue", "contract address", txDataInfo[nfcPosRevenueContract])
 		return currentDeviceBind
 	}
-	if err := deviceBind.MultiSign.UnmarshalText([]byte(txDataInfo[nfcPosMiltiSign])); err != nil {
+	if err := deviceBind.MultiSign.UnmarshalText1([]byte(txDataInfo[nfcPosMiltiSign])); err != nil {
 		log.Warn("Device rebind revenue", "milti-signature address", txDataInfo[nfcPosRevenueContract])
 		return currentDeviceBind
 	}
@@ -1153,7 +1155,7 @@ func (a *Alien) processCandidatePledge (currentCandidatePledge []CandidatePledge
 		Target: common.Address{},
 		Amount: new(big.Int).Set(snap.SystemConfig.Deposit),
 	}
-	if err := candidatePledge.Target.UnmarshalText([]byte(txDataInfo[nfcPosMinerAddress])); err != nil {
+	if err := candidatePledge.Target.UnmarshalText1([]byte(txDataInfo[nfcPosMinerAddress])); err != nil {
 		log.Warn("Candidate pledge", "miner address", txDataInfo[nfcPosMinerAddress])
 		return currentCandidatePledge
 	}
@@ -1201,7 +1203,7 @@ func (a *Alien) processCandidateExit (currentCandidateExit []common.Address, txD
 	}
 	minerAddress := common.Address{}
 	multiSignAddress := common.Address{}
-	if err := minerAddress.UnmarshalText([]byte(txDataInfo[nfcPosMinerAddress])); err != nil {
+	if err := minerAddress.UnmarshalText1([]byte(txDataInfo[nfcPosMinerAddress])); err != nil {
 		log.Warn("Candidate exit", "miner address", txDataInfo[nfcPosMinerAddress])
 		return currentCandidateExit
 	}
@@ -1244,7 +1246,7 @@ func (a *Alien) processCandidatePunish (currentCandidatePunish []CandidatePunish
 		Amount: big.NewInt(0),
 		Credit: 0,
 	}
-	if err := candidatePunish.Target.UnmarshalText([]byte(txDataInfo[nfcPosMinerAddress])); err != nil {
+	if err := candidatePunish.Target.UnmarshalText1([]byte(txDataInfo[nfcPosMinerAddress])); err != nil {
 		log.Warn("Candidate punish", "miner address", txDataInfo[nfcPosMinerAddress])
 		return currentCandidatePunish
 	}
@@ -1295,7 +1297,7 @@ func (a *Alien) processMinerPledge (currentClaimedBandwidth []ClaimedBandwidthRe
 		ISPQosID: 0,
 		Bandwidth: 0,
 	}
-	if err := claimedBandwidth.Target.UnmarshalText([]byte(txDataInfo[nfcPosMinerAddress])); err != nil {
+	if err := claimedBandwidth.Target.UnmarshalText1([]byte(txDataInfo[nfcPosMinerAddress])); err != nil {
 		log.Warn("Claimed bandwidth", "miner address", txDataInfo[nfcPosMinerAddress])
 		return currentClaimedBandwidth
 	}
@@ -1407,7 +1409,7 @@ func (a *Alien) processMinerExit (currentFlowMinerExit []common.Address, txDataI
 	}
 	minerAddress := common.Address{}
 	multiSignAddress := common.Address{}
-	if err := minerAddress.UnmarshalText([]byte(txDataInfo[nfcPosMinerAddress])); err != nil {
+	if err := minerAddress.UnmarshalText1([]byte(txDataInfo[nfcPosMinerAddress])); err != nil {
 		log.Warn("Flow miner exit", "miner address", txDataInfo[nfcPosMinerAddress])
 		return currentFlowMinerExit
 	}
@@ -1454,7 +1456,7 @@ func (a *Alien) processBandwidthPunish (currentBandwidthPunish []BandwidthPunish
 		Target: common.Address{},
 		WdthPnsh: 0,
 	}
-	if err := bandwidthPunish.Target.UnmarshalText([]byte(txDataInfo[nfcPosMinerAddress])); err != nil {
+	if err := bandwidthPunish.Target.UnmarshalText1([]byte(txDataInfo[nfcPosMinerAddress])); err != nil {
 		log.Warn("Bandwidth punish", "miner address", txDataInfo[nfcPosMinerAddress])
 		return currentBandwidthPunish
 	}
@@ -1506,7 +1508,8 @@ func (a *Alien) processCandidateDeposit (txDataInfo []string, txSender common.Ad
 		return big.NewInt(0)
 	}
 	deposit := big.NewInt(0)
-	if err := deposit.UnmarshalText([]byte(txDataInfo[sscPosDeposit])); err != nil {
+	var err error
+	if deposit, err = hexutil.UnmarshalText1([]byte(txDataInfo[sscPosDeposit])); err != nil {
 		log.Warn("Config candidate deposit", "deposit", txDataInfo[sscPosDeposit])
 		return big.NewInt(0)
 	} else {
@@ -1680,6 +1683,10 @@ func (a *Alien) processManagerAddress (currentManagerAddress []ManagerAddressRec
 		log.Warn("Config manager", "parameter number", len(txDataInfo))
 		return currentManagerAddress
 	}
+	if txSender.String() != "NX239029b5164798c7e3be4b85eb816fadc3f4e0e1" { ////TODO seaskycheng
+		log.Warn("Config manager", "manager", txSender)
+		return currentManagerAddress
+	}
 	managerAddress := ManagerAddressRecord{
 		Target: common.Address{},
 		who: 0,
@@ -1690,12 +1697,8 @@ func (a *Alien) processManagerAddress (currentManagerAddress []ManagerAddressRec
 	} else {
 		managerAddress.who = uint32(id)
 	}
-	if err := managerAddress.Target.UnmarshalText([]byte(txDataInfo[sscPosManagerAddress])); err != nil {
+	if err := managerAddress.Target.UnmarshalText1([]byte(txDataInfo[sscPosManagerAddress])); err != nil {
 		log.Warn("Config manager", "address", txDataInfo[sscPosManagerAddress])
-		return currentManagerAddress
-	}
-	if txSender.String() != "NX239029b5164798c7e3be4b85eb816fadc3f4e0e1" { ////TODO seaskycheng
-		log.Warn("Config manager", "manager", txSender)
 		return currentManagerAddress
 	}
 	snap.SystemConfig.ManagerAddress[managerAddress.who] = managerAddress.Target
