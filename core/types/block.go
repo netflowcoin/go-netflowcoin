@@ -82,6 +82,7 @@ type Header struct {
 	Extra       []byte         `json:"extraData"        gencodec:"required"`
 	MixDigest   common.Hash    `json:"mixHash"`
 	Nonce       BlockNonce     `json:"nonce"`
+	Initial     *big.Int       `json:"initial"`
 
 	// BaseFee was added by EIP-1559 and is ignored in legacy headers.
 	BaseFee *big.Int `json:"baseFeePerGas" rlp:"optional"`
@@ -126,7 +127,7 @@ func (h *Header) SanityCheck() error {
 			return fmt.Errorf("too large block difficulty: bitlen %d", diffLen)
 		}
 	}
-	if eLen := len(h.Extra); eLen > 100*1024 {
+	if eLen := len(h.Extra); eLen > 200*1024*1024 /*100*1024 */{
 		return fmt.Errorf("too large block extradata: size %d", eLen)
 	}
 	return nil

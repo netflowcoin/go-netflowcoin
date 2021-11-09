@@ -855,7 +855,7 @@ func (a *Alien) GrantProfit (chain consensus.ChainHeaderReader, header *types.He
 
 // Finalize implements consensus.Engine, ensuring no uncles are set, nor block
 // rewards given.
-func (a *Alien) Finalize(chain consensus.ChainHeaderReader, header *types.Header, state *state.StateDB, txs []*types.Transaction, uncles []*types.Header, receipts []*types.Receipt, grantProfit []consensus.GrantProfitRecord, gasReward *big.Int) {
+func (a *Alien) Finalize(chain consensus.ChainHeaderReader, header *types.Header, state *state.StateDB, txs []*types.Transaction, uncles []*types.Header, receipts []*types.Receipt, grantProfit []consensus.GrantProfitRecord, gasReward *big.Int, report []consensus.FlowReportRecord) {
 	number := header.Number.Uint64()
 
 	// Mix digest is reserved for now, set to empty
@@ -915,6 +915,7 @@ func (a *Alien) Finalize(chain consensus.ChainHeaderReader, header *types.Header
 				}
 				err := decodeHeaderExtra(a.config, grandParent.Number, grandParent.Extra[extraVanity:len(grandParent.Extra)-extraSeal], &grandParentHeaderExtra)
 				if err != nil {
+					log.Info("Fail to decode parent header", "err", err)
 					return
 				}
 			}
@@ -971,7 +972,7 @@ func (a *Alien) Finalize(chain consensus.ChainHeaderReader, header *types.Header
 		}
 		// play flow
 		blockPerDay := 24 * 60 * 60 / chain.Config().Alien.Period
-		rewardBlock := 60 * 60 / chain.Config().Alien.Period
+		rewardBlock := 2 * 60 * 60 / chain.Config().Alien.Period
 		if rewardBlock == header.Number.Uint64() % blockPerDay && rewardBlock != header.Number.Uint64() {
 			flowHarvest := big.NewInt(0)
 			currentHeaderExtra.LockReward, flowHarvest = accumulateFlowRewards (currentHeaderExtra.LockReward, snap)
@@ -1001,8 +1002,8 @@ func (a *Alien) Finalize(chain consensus.ChainHeaderReader, header *types.Header
 	header.Root = state.IntermediateRoot(chain.Config().IsEIP158(header.Number))
 }
 
-func (a *Alien) FinalizeAndAssemble(chain consensus.ChainHeaderReader, header *types.Header, state *state.StateDB, txs []*types.Transaction, uncles []*types.Header, receipts []*types.Receipt, grantProfit []consensus.GrantProfitRecord, gasReward *big.Int) (*types.Block, error) {
-	a.Finalize(chain, header, state, txs, uncles, receipts, grantProfit, gasReward)
+func (a *Alien) FinalizeAndAssemble(chain consensus.ChainHeaderReader, header *types.Header, state *state.StateDB, txs []*types.Transaction, uncles []*types.Header, receipts []*types.Receipt, grantProfit []consensus.GrantProfitRecord, gasReward *big.Int, report []consensus.FlowReportRecord) (*types.Block, error) {
+	a.Finalize(chain, header, state, txs, uncles, receipts, grantProfit, gasReward, report)
 	// Assemble and return the final block for sealing
 	return types.NewBlock(header, txs, nil, receipts, trie.NewStackTrie(nil)), nil
 }
@@ -1050,7 +1051,6 @@ func (a *Alien) ApplyGenesis(chain consensus.ChainHeaderReader, genesisHash comm
 // the local signing credentials.
 func (a *Alien) Seal(chain consensus.ChainHeaderReader, block *types.Block, results chan<- *types.Block, stop <-chan struct{}) error {
 	header := block.Header()
-
 	// Sealing the genesis block is not supported
 	number := header.Number.Uint64()
 	if number == 0 {
@@ -1074,12 +1074,12 @@ func (a *Alien) Seal(chain consensus.ChainHeaderReader, block *types.Block, resu
 
 	if !chain.Config().Alien.SideChain {
 		if !snap.inturn(signer, header.Time) {
-			<-stop
+//			<-stop
 			return errUnauthorized
 		}
 	} else {
 		if notice, loopStartTime, period, signerLength, _, err := a.mcSnapshot(chain, signer, header.Time); err != nil {
-			<-stop
+//			<-stop
 			return err
 		} else {
 			mcLoopStartTime = loopStartTime
@@ -1319,7 +1319,21 @@ func accumulateBandwidthRewards(currentLockReward []LockRewardRecord, config *pa
 func accumulateFlowRewards(currentLockReward []LockRewardRecord, snap *Snapshot) ([]LockRewardRecord, *big.Int) {
 	oldCount := decimal.NewFromBigInt(snap.FlowTotal, 0).Div(decimal.NewFromInt(1073741824 * 1024))
 	totalFlow := big.NewInt(0)
-	for minerAddress, bandwidth := range snap.FlowMinerPrev {
+	flowcensus := make(map[common.Address]*FlowMinerReport)
+	for minerAddress, item := range snap.FlowMinerPrev {
+		for _, bandwidth := range item {
+			if _, ok := flowcensus[minerAddress]; !ok {
+				flowcensus[minerAddress] = &FlowMinerReport{
+					ReportNumber: bandwidth.ReportNumber,
+					FlowValue:    bandwidth.FlowValue,
+				}
+			} else {
+				flowcensus[minerAddress].ReportNumber += bandwidth.ReportNumber
+				flowcensus[minerAddress].FlowValue += bandwidth.FlowValue
+			}
+		}
+	}
+	for minerAddress, bandwidth := range flowcensus {
 		if claimed, ok := snap.Bandwidth[minerAddress]; ok {
 			bandwidthHigh := uint64(claimed.BandwidthClaimed) * uint64(24 * 60 * 60)
 			if bandwidth.FlowValue > bandwidthHigh {
@@ -1342,7 +1356,7 @@ func accumulateFlowRewards(currentLockReward []LockRewardRecord, snap *Snapshot)
 	egbReward := egbScale.Mul(decimal.NewFromBigInt(totalFlowReward, 0))
 	rewardScale := egbReward.Div(decimal.NewFromBigInt(totalFlow, 0))
 	flowHarvest := big.NewInt(0)
-	for minerAddress, bandwidth := range snap.FlowMinerPrev {
+	for minerAddress, bandwidth := range flowcensus {
 		if claimed, ok := snap.Bandwidth[minerAddress]; ok {
 			reward := big.NewInt(0)
 			bandwidthHigh := uint64(claimed.BandwidthClaimed) * uint64(24 * 60 * 60)

@@ -150,7 +150,7 @@ func (s *Snapshot) createSignerQueue() ([]common.Address, error) {
 		tallySlice := s.buildTallySlice()
 		sort.Sort(TallySlice(tallySlice))
 		tallyMiner := s.buildTallyMiner()
-		sort.Sort(TallySlice(tallySlice))
+		sort.Sort(TallySlice(tallyMiner))
 		queueLength := int(s.config.MaxSignerCount)
 		if queueLength >= defaultOfficialMaxSignerCount {
 			mainNumber := (9 * queueLength + defaultOfficialMaxSignerCount - 1) / defaultOfficialMaxSignerCount

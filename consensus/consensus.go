@@ -37,6 +37,18 @@ type GrantProfitRecord struct {
 	MultiSignature  common.Address
 }
 
+type FlowReportItem struct {
+	Target       common.Address
+	ReportTime   uint64
+	FlowValue    uint64
+	ReportNumber uint32
+}
+
+type FlowReportRecord struct {
+	ChainHash     common.Hash
+	ReportContent []FlowReportItem
+}
+
 // ChainHeaderReader defines a small collection of methods needed to access the local
 // blockchain during header verification.
 type ChainHeaderReader interface {
@@ -99,7 +111,7 @@ type Engine interface {
 	// Note: The block header and state database might be updated to reflect any
 	// consensus rules that happen at finalization (e.g. block rewards).
 	Finalize(chain ChainHeaderReader, header *types.Header, state *state.StateDB, txs []*types.Transaction,
-		uncles []*types.Header, receipts []*types.Receipt, grantProfit []GrantProfitRecord, gasReward *big.Int)
+		uncles []*types.Header, receipts []*types.Receipt, grantProfit []GrantProfitRecord, gasReward *big.Int, report []FlowReportRecord)
 
 	// FinalizeAndAssemble runs any post-transaction state modifications (e.g. block
 	// rewards) and assembles the final block.
@@ -107,7 +119,7 @@ type Engine interface {
 	// Note: The block header and state database might be updated to reflect any
 	// consensus rules that happen at finalization (e.g. block rewards).
 	FinalizeAndAssemble(chain ChainHeaderReader, header *types.Header, state *state.StateDB, txs []*types.Transaction,
-		uncles []*types.Header, receipts []*types.Receipt, grantProfit []GrantProfitRecord, gasReward *big.Int) (*types.Block, error)
+		uncles []*types.Header, receipts []*types.Receipt, grantProfit []GrantProfitRecord, gasReward *big.Int, report []FlowReportRecord) (*types.Block, error)
 
 	// Seal generates a new sealing request for the given input block and pushes
 	// the result into the given channel.

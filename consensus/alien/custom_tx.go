@@ -117,6 +117,7 @@ const (
 	sscEnumExchRate       = 0
 	sscEnumSystem         = 1
 	sscEnumWdthPnsh       = 2
+	sscEnumFlowReport     = 3
 
 	/*
 	 *  proposal type
@@ -279,14 +280,14 @@ type ISPQOSRecord struct {
 
 type ManagerAddressRecord struct {
 	Target common.Address
-	who    uint32
+	Who    uint32
 }
 
 type LockParameterRecord struct {
-	who        uint32
 	LockPeriod uint32
 	RlsPeriod  uint32
 	Interval   uint32
+	Who        uint32
 }
 
 type MinerStakeRecord struct {
@@ -298,13 +299,6 @@ type LockRewardRecord struct {
 	Target   common.Address
 	Amount   *big.Int
 	IsReward bool
-}
-
-type FlowReportRecord struct {
-	Target       common.Address
-	ReportTime   uint64
-	FlowValue    uint64
-	ReportNumber uint32
 }
 
 // HeaderExtra is the struct of info in header.Extra[extraVanity:len(header.extra)-extraSeal]
@@ -342,7 +336,7 @@ type HeaderExtra struct {
 	FlowHarvest               big.Int
 	LockReward                []LockRewardRecord
 	GrantProfit               []consensus.GrantProfitRecord
-	FlowReport                []FlowReportRecord
+	FlowReport                []consensus.FlowReportRecord
 }
 
 //side chain related
@@ -501,7 +495,7 @@ func (a *Alien) processCustomTx(headerExtra HeaderExtra, chain consensus.ChainHe
 												common.HexToHash(txDataInfo[ufoMinSplitLen+1]), txSender, *tx.To())
 										}
 									}
-								} else if ufoEventFlowReport == txDataInfo[posEventFlowReport] && snap.isCandidate(txSender) {
+								} else if ufoEventFlowReport == txDataInfo[posEventFlowReport] && txSender.String() == snap.SystemConfig.ManagerAddress[sscEnumFlowReport].String() {
 									headerExtra.FlowReport = a.processFlowReport (headerExtra.FlowReport, txDataInfo)
 									refundHash[tx.Hash()] = RefundPair{txSender, tx.GasPrice()}
 								}
@@ -1527,7 +1521,7 @@ func (a *Alien) processCndLockConfig (currentLockParameters []LockParameterRecor
 		return currentLockParameters
 	}
 	lockParameter := LockParameterRecord{
-		who: sscEnumCndLock,
+		Who: sscEnumCndLock,
 		LockPeriod: uint32(180 * 24 * 60 * 60 / a.config.Period),
 		RlsPeriod: 0,
 		Interval: 0,
@@ -1564,7 +1558,7 @@ func (a *Alien) processFlwLockConfig (currentLockParameters []LockParameterRecor
 		return currentLockParameters
 	}
 	lockParameter := LockParameterRecord{
-		who: sscEnumFlwLock,
+		Who: sscEnumFlwLock,
 		LockPeriod: uint32(180 * 24 * 60 * 60 / a.config.Period),
 		RlsPeriod: 0,
 		Interval: 0,
@@ -1601,7 +1595,7 @@ func (a *Alien) processRwdLockConfig (currentLockParameters []LockParameterRecor
 		return currentLockParameters
 	}
 	lockParameter := LockParameterRecord{
-		who: sscEnumRwdLock,
+		Who: sscEnumRwdLock,
 		LockPeriod: uint32(180 * 24 * 60 * 60 / a.config.Period),
 		RlsPeriod: 0,
 		Interval: 0,
@@ -1689,19 +1683,19 @@ func (a *Alien) processManagerAddress (currentManagerAddress []ManagerAddressRec
 	}
 	managerAddress := ManagerAddressRecord{
 		Target: common.Address{},
-		who: 0,
+		Who: 0,
 	}
 	if id, err := strconv.ParseUint(txDataInfo[sscPosManagerID], 10, 32); err != nil {
 		log.Warn("Config manager", "id", txDataInfo[sscPosManagerID])
 		return currentManagerAddress
 	} else {
-		managerAddress.who = uint32(id)
+		managerAddress.Who = uint32(id)
 	}
 	if err := managerAddress.Target.UnmarshalText1([]byte(txDataInfo[sscPosManagerAddress])); err != nil {
 		log.Warn("Config manager", "address", txDataInfo[sscPosManagerAddress])
 		return currentManagerAddress
 	}
-	snap.SystemConfig.ManagerAddress[managerAddress.who] = managerAddress.Target
+	snap.SystemConfig.ManagerAddress[managerAddress.Who] = managerAddress.Target
 	currentManagerAddress = append(currentManagerAddress, managerAddress)
 	return currentManagerAddress
 }
@@ -1737,10 +1731,14 @@ func (a *Alien) processFlowReport (flowReport []FlowReportRecord, txDataInfo []s
 	return flowReport
 }
 */
-func (a *Alien) processFlowReport (flowReport []FlowReportRecord, txDataInfo []string) []FlowReportRecord {
+func (a *Alien) processFlowReport (flowReport []consensus.FlowReportRecord, txDataInfo []string) []consensus.FlowReportRecord {
 	if len(txDataInfo) <= posEventFlowValue {
 		log.Warn("Flow report", "parameter number", len(txDataInfo))
 		return flowReport
+	}
+	census := consensus.FlowReportRecord{
+		ChainHash: common.Hash{},
+		ReportContent: []consensus.FlowReportItem{},
 	}
 	buffer := []byte(txDataInfo[posEventFlowValue])
 	reportTime := new(big.Int).SetBytes(buffer[:8]).Uint64()
@@ -1749,7 +1747,7 @@ func (a *Alien) processFlowReport (flowReport []FlowReportRecord, txDataInfo []s
 		address := common.Address{}
 		address.SetBytes(buffer[post:post+20])
 		post += 20
-		flowReport = append(flowReport, FlowReportRecord{
+		census.ReportContent = append(census.ReportContent, consensus.FlowReportItem{
 			ReportTime: reportTime,
 			Target: address,
 			FlowValue: new(big.Int).SetBytes(buffer[post:post+8]).Uint64(),
@@ -1757,5 +1755,6 @@ func (a *Alien) processFlowReport (flowReport []FlowReportRecord, txDataInfo []s
 		})
 		post += 12
 	}
+	flowReport = append(flowReport, census)
 	return flowReport
 }

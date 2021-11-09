@@ -128,11 +128,6 @@ type ClaimedBandwidth struct {
 	BandwidthClaimed   uint32   `json:"bandwidthclaimed"`
 }
 
-type FlowMinerReport struct {
-	ReportNumber uint32
-	FlowValue    uint64
-}
-
 type LockParameter struct {
 	LockPeriod uint32 `json:"LockPeriod"`
 	RlsPeriod  uint32 `json:"ReleasePeriod"`
@@ -151,6 +146,11 @@ type SystemParameter struct {
 	QosConfig      map[uint32]uint32         `json:"BandwidthQOS"`
 	ManagerAddress map[uint32]common.Address `json:"FoundationAddress"`
 	LockParameters map[uint32]*LockParameter `json:"PledgeParameter"`
+}
+
+type FlowMinerReport struct {
+	ReportNumber uint32
+	FlowValue    uint64
 }
 
 // Snapshot is the state of the authorization voting at a given point in time.
@@ -175,7 +175,7 @@ type Snapshot struct {
 	HeaderTime      uint64                                            `json:"headerTime"`        // Time of the current header
 	LoopStartTime   uint64                                            `json:"loopStartTime"`     // Start Time of the current loop
 	ProposalRefund  map[uint64]map[common.Address]*big.Int            `json:"proposalRefund"`    // Refund proposal deposit
-	SCCoinbase      map[common.Address]map[common.Hash]common.Address `json:"sideChainCoinbase"` // main chain set Coinbase of side chain setting
+	SCCoinbase      map[common.Hash]map[common.Address]common.Address `json:"sideChainCoinbase"` // main chain set Coinbase of side chain setting
 	SCRecordMap     map[common.Hash]*SCRecord                         `json:"sideChainRecord"`   // main chain record Confirmation of side chain setting
 	SCRewardMap     map[common.Hash]*SCReward                         `json:"sideChainReward"`   // main chain record Side Chain Reward
 	SCNoticeMap     map[common.Hash]*CCNotice                         `json:"sideChainNotice"`   // main chain record Notification to side chain
@@ -193,9 +193,12 @@ type Snapshot struct {
 	FlowRevenue     map[common.Address]map[uint64]*PledgeItem         `json:"flowrevenve"`
 	SystemConfig    SystemParameter                                   `json:"systemconfig"`
 	DayStartTime    uint64                                            `json:"dayStartTime"`
-	FlowMiner       map[common.Address]*FlowMinerReport               `json:"flowminer"`
-	FlowMinerPrev   map[common.Address]*FlowMinerReport               `json:"flowminer"`
+	FlowMiner       map[common.Address]map[common.Hash]*FlowMinerReport               `json:"flowminerCurr"`
+	FlowMinerPrev   map[common.Address]map[common.Hash]*FlowMinerReport               `json:"flowminerPrev"`
 	FlowTotal       *big.Int                                          `json:"flowtotal"`
+	SCMinerRevenue  map[common.Address]common.Address                 `json:"scminerrevenue"`
+	SCFlowPledge    map[common.Address]bool                           `json:"scflowpledge"`
+	SignerMissing   []common.Address                                  `json:"signermissing"`
 }
 
 var (
@@ -236,7 +239,7 @@ func newSnapshot(config *params.AlienConfig, sigcache *lru.ARCCache, hash common
 		Proposals:       make(map[common.Hash]*Proposal),
 		HeaderTime:      uint64(time.Now().Unix()) - 1,
 		LoopStartTime:   config.GenesisTimestamp,
-		SCCoinbase:      make(map[common.Address]map[common.Hash]common.Address),
+		SCCoinbase:      make(map[common.Hash]map[common.Address]common.Address),
 		SCRecordMap:     make(map[common.Hash]*SCRecord),
 		SCRewardMap:     make(map[common.Hash]*SCReward),
 		SCNoticeMap:     make(map[common.Hash]*CCNotice),
@@ -262,9 +265,12 @@ func newSnapshot(config *params.AlienConfig, sigcache *lru.ARCCache, hash common
 			LockParameters: make(map[uint32]*LockParameter),
 		},
 		DayStartTime:    config.GenesisTimestamp,
-		FlowMiner:       make(map[common.Address]*FlowMinerReport),
-		FlowMinerPrev:   make(map[common.Address]*FlowMinerReport),
+		FlowMiner:       make(map[common.Address]map[common.Hash]*FlowMinerReport),
+		FlowMinerPrev:   make(map[common.Address]map[common.Hash]*FlowMinerReport),
 		FlowTotal:       big.NewInt(0),
+		SCMinerRevenue:  make(map[common.Address]common.Address),
+		SCFlowPledge:    make(map[common.Address]bool),
+		SignerMissing:   []common.Address{},
 	}
 	snap.HistoryHash = append(snap.HistoryHash, hash)
 
@@ -311,6 +317,7 @@ func newSnapshot(config *params.AlienConfig, sigcache *lru.ARCCache, hash common
 	snap.SystemConfig.ManagerAddress[sscEnumExchRate] = common.HexToAddress("NX239029b5164798c7e3be4b85eb816fadc3f4e0e1") ////TODO seaskycheng
 	snap.SystemConfig.ManagerAddress[sscEnumSystem] = common.HexToAddress("NX239029b5164798c7e3be4b85eb816fadc3f4e0e1")   ////TODO seaskycheng
 	snap.SystemConfig.ManagerAddress[sscEnumWdthPnsh] = common.HexToAddress("NX239029b5164798c7e3be4b85eb816fadc3f4e0e1") ////TODO seaskycheng
+	snap.SystemConfig.ManagerAddress[sscEnumFlowReport] = common.HexToAddress("NX239029b5164798c7e3be4b85eb816fadc3f4e0e1") ////TODO seaskycheng
 
 	return snap
 }
@@ -376,6 +383,9 @@ func loadSnapshot(config *params.AlienConfig, sigcache *lru.ARCCache, db ethdb.D
 	if _, ok := snap.SystemConfig.ManagerAddress[sscEnumWdthPnsh]; !ok {
 		snap.SystemConfig.ManagerAddress[sscEnumWdthPnsh] = common.HexToAddress("NX239029b5164798c7e3be4b85eb816fadc3f4e0e1") ////TODO seaskycheng
 	}
+	if _, ok := snap.SystemConfig.ManagerAddress[sscEnumFlowReport]; !ok {
+		snap.SystemConfig.ManagerAddress[sscEnumFlowReport] = common.HexToAddress("NX239029b5164798c7e3be4b85eb816fadc3f4e0e1") ////TODO seaskycheng
+	}
 
 	return snap, nil
 }
@@ -412,7 +422,7 @@ func (s *Snapshot) copy() *Snapshot {
 
 		HeaderTime:     s.HeaderTime,
 		LoopStartTime:  s.LoopStartTime,
-		SCCoinbase:     make(map[common.Address]map[common.Hash]common.Address),
+		SCCoinbase:     make(map[common.Hash]map[common.Address]common.Address),
 		SCRecordMap:    make(map[common.Hash]*SCRecord),
 		SCRewardMap:    make(map[common.Hash]*SCReward),
 		SCNoticeMap:    make(map[common.Hash]*CCNotice),
@@ -439,12 +449,16 @@ func (s *Snapshot) copy() *Snapshot {
 			LockParameters: make(map[uint32]*LockParameter),
 		},
 		DayStartTime:    s.DayStartTime,
-		FlowMiner:       make(map[common.Address]*FlowMinerReport),
-		FlowMinerPrev:   make(map[common.Address]*FlowMinerReport),
+		FlowMiner:       make(map[common.Address]map[common.Hash]*FlowMinerReport),
+		FlowMinerPrev:   make(map[common.Address]map[common.Hash]*FlowMinerReport),
 		FlowTotal:       new(big.Int).Set(s.FlowTotal),
+		SCMinerRevenue:  make(map[common.Address]common.Address),
+		SCFlowPledge:    make(map[common.Address]bool),
+		SignerMissing:   make([]common.Address, len(s.SignerMissing)),
 	}
 	copy(cpy.HistoryHash, s.HistoryHash)
 	copy(cpy.Signers, s.Signers)
+	copy(cpy.SignerMissing, s.SignerMissing)
 	for voter, vote := range s.Votes {
 		cpy.Votes[voter] = &Vote{
 			Voter:     vote.Voter,
@@ -471,10 +485,10 @@ func (s *Snapshot) copy() *Snapshot {
 	for txHash, proposal := range s.Proposals {
 		cpy.Proposals[txHash] = proposal.copy()
 	}
-	for signer, sc := range s.SCCoinbase {
-		cpy.SCCoinbase[signer] = make(map[common.Hash]common.Address)
-		for hash, addr := range sc {
-			cpy.SCCoinbase[signer][hash] = addr
+	for hash, sc := range s.SCCoinbase {
+		cpy.SCCoinbase[hash] = make(map[common.Address]common.Address)
+		for addr, signer := range sc {
+			cpy.SCCoinbase[hash][addr] = signer
 		}
 	}
 	for hash, scc := range s.SCRecordMap {
@@ -639,16 +653,22 @@ func (s *Snapshot) copy() *Snapshot {
 	for who, address := range s.SystemConfig.ManagerAddress {
 		cpy.SystemConfig.ManagerAddress[who] = address
 	}
-	for who, report := range s.FlowMiner {
-		cpy.FlowMiner[who] = &FlowMinerReport {
-			ReportNumber: report.ReportNumber,
-			FlowValue:    report.FlowValue,
+	for who, item := range s.FlowMiner {
+		cpy.FlowMiner[who] = make(map[common.Hash]*FlowMinerReport)
+		for chain, report := range item {
+			cpy.FlowMiner[who][chain] = &FlowMinerReport {
+				ReportNumber: report.ReportNumber,
+				FlowValue:    report.FlowValue,
+			}
 		}
 	}
-	for who, report := range s.FlowMinerPrev {
-		cpy.FlowMinerPrev[who] = &FlowMinerReport {
-			ReportNumber: report.ReportNumber,
-			FlowValue:    report.FlowValue,
+	for who, item := range s.FlowMinerPrev {
+		cpy.FlowMinerPrev[who] = make(map[common.Hash]*FlowMinerReport)
+		for chain, report := range item {
+			cpy.FlowMinerPrev[who][chain] = &FlowMinerReport {
+				ReportNumber: report.ReportNumber,
+				FlowValue:    report.FlowValue,
+			}
 		}
 	}
 	if 0 == cpy.SystemConfig.ExchRate {
@@ -689,6 +709,9 @@ func (s *Snapshot) copy() *Snapshot {
 	}
 	if _, ok := cpy.SystemConfig.ManagerAddress[sscEnumWdthPnsh]; !ok {
 		cpy.SystemConfig.ManagerAddress[sscEnumWdthPnsh] = common.HexToAddress("NX239029b5164798c7e3be4b85eb816fadc3f4e0e1") ////TODO seaskycheng
+	}
+	if _, ok := cpy.SystemConfig.ManagerAddress[sscEnumFlowReport]; !ok {
+		cpy.SystemConfig.ManagerAddress[sscEnumFlowReport] = common.HexToAddress("NX239029b5164798c7e3be4b85eb816fadc3f4e0e1") ////TODO seaskycheng
 	}
 
 	return cpy
@@ -795,29 +818,34 @@ func (s *Snapshot) apply(headers []*types.Header) (*Snapshot, error) {
 		blockPerDay := 24 * 60 * 60 / snap.config.Period
 		if 0 == header.Number.Uint64() % blockPerDay && 0 != header.Number.Uint64() {
 			snap.DayStartTime = header.Time
-			snap.FlowMinerPrev = make(map[common.Address]*FlowMinerReport)
+			snap.FlowMinerPrev = make(map[common.Address]map[common.Hash]*FlowMinerReport)
 			for address, item := range snap.FlowMiner {
-				snap.FlowMinerPrev[address] = &FlowMinerReport{
-					ReportNumber: item.ReportNumber,
-					FlowValue: item.FlowValue,
+				snap.FlowMinerPrev[address] = make(map[common.Hash]*FlowMinerReport)
+				for chain, report := range item {
+					snap.FlowMinerPrev[address][chain] = &FlowMinerReport{
+						ReportNumber: report.ReportNumber,
+						FlowValue: report.FlowValue,
+					}
 				}
 			}
-			snap.FlowMiner = make(map[common.Address]*FlowMinerReport)
+			snap.FlowMiner = make(map[common.Address]map[common.Hash]*FlowMinerReport)
 		} else if rewardBlock == header.Number.Uint64() % blockPerDay && rewardBlock != header.Number.Uint64() {
-			for minerAddress, bandwidth := range snap.FlowMinerPrev {
-				if claimed, ok := snap.Bandwidth[minerAddress]; ok {
-					bandwidthHigh := uint64(claimed.BandwidthClaimed) * uint64(24 * 60 * 60)
-					if bandwidth.FlowValue > bandwidthHigh {
-						if nil == snap.FlowTotal {
-							snap.FlowTotal = big.NewInt(int64(bandwidthHigh))
+			for minerAddress, item := range snap.FlowMinerPrev {
+				for _, bandwidth := range item {
+					if claimed, ok := snap.Bandwidth[minerAddress]; ok {
+						bandwidthHigh := uint64(claimed.BandwidthClaimed) * uint64(24 * 60 * 60)
+						if bandwidth.FlowValue > bandwidthHigh {
+							if nil == snap.FlowTotal {
+								snap.FlowTotal = big.NewInt(int64(bandwidthHigh))
+							} else {
+								snap.FlowTotal = new(big.Int).Add(snap.FlowTotal, big.NewInt(int64(bandwidthHigh)))
+							}
 						} else {
-							snap.FlowTotal = new(big.Int).Add(snap.FlowTotal, big.NewInt(int64(bandwidthHigh)))
-						}
-					} else {
-						if nil == snap.FlowTotal {
-							snap.FlowTotal = big.NewInt(int64(bandwidth.FlowValue))
-						} else {
-							snap.FlowTotal = new(big.Int).Add(snap.FlowTotal, big.NewInt(int64(bandwidth.FlowValue)))
+							if nil == snap.FlowTotal {
+								snap.FlowTotal = big.NewInt(int64(bandwidth.FlowValue))
+							} else {
+								snap.FlowTotal = new(big.Int).Add(snap.FlowTotal, big.NewInt(int64(bandwidth.FlowValue)))
+							}
 						}
 					}
 				}
@@ -1047,16 +1075,25 @@ func (s *Snapshot) apply(headers []*types.Header) (*Snapshot, error) {
 				snap.Bandwidth[item.Target].BandwidthClaimed = item.WdthPnsh
 			}
 		}
-		for _, item := range headerExtra.FlowReport {
-			if item.ReportTime < snap.DayStartTime {
-				snap.FlowMinerPrev[item.Target] = &FlowMinerReport{
-					ReportNumber: item.ReportNumber,
-					FlowValue: item.FlowValue,
-				}
-			} else {
-				snap.FlowMiner[item.Target] = &FlowMinerReport{
-					ReportNumber: item.ReportNumber,
-					FlowValue: item.FlowValue,
+		for _, items := range headerExtra.FlowReport {
+			chain := items.ChainHash
+			for _, item := range items.ReportContent {
+				if item.ReportTime < snap.DayStartTime {
+					if _, ok := snap.FlowMinerPrev[item.Target]; !ok {
+						snap.FlowMinerPrev[item.Target] = make(map[common.Hash]*FlowMinerReport)
+					}
+					snap.FlowMinerPrev[item.Target][chain] = &FlowMinerReport{
+						ReportNumber: item.ReportNumber,
+						FlowValue: item.FlowValue,
+					}
+				} else {
+					if _, ok := snap.FlowMiner[item.Target]; !ok {
+						snap.FlowMiner[item.Target] = make(map[common.Hash]*FlowMinerReport)
+					}
+					snap.FlowMiner[item.Target][chain] = &FlowMinerReport{
+						ReportNumber: item.ReportNumber,
+						FlowValue: item.FlowValue,
+					}
 				}
 			}
 		}
@@ -1080,15 +1117,15 @@ func (s *Snapshot) apply(headers []*types.Header) (*Snapshot, error) {
 			snap.SystemConfig.QosConfig[item.ISPID] = item.QOS
 		}
 		for _, item := range headerExtra.ManagerAddress {
-			snap.SystemConfig.ManagerAddress[item.who] = item.Target
+			snap.SystemConfig.ManagerAddress[item.Who] = item.Target
 		}
 		for _, item := range headerExtra.LockParameters {
-			if _, ok := snap.SystemConfig.LockParameters[item.who]; ok {
-				snap.SystemConfig.LockParameters[item.who].LockPeriod = item.LockPeriod
-				snap.SystemConfig.LockParameters[item.who].RlsPeriod = item.RlsPeriod
-				snap.SystemConfig.LockParameters[item.who].Interval = item.Interval
+			if _, ok := snap.SystemConfig.LockParameters[item.Who]; ok {
+				snap.SystemConfig.LockParameters[item.Who].LockPeriod = item.LockPeriod
+				snap.SystemConfig.LockParameters[item.Who].RlsPeriod = item.RlsPeriod
+				snap.SystemConfig.LockParameters[item.Who].Interval = item.Interval
 			} else {
-				snap.SystemConfig.LockParameters[item.who] = &LockParameter{
+				snap.SystemConfig.LockParameters[item.Who] = &LockParameter{
 					LockPeriod: item.LockPeriod,
 					RlsPeriod:  item.RlsPeriod,
 					Interval:   item.Interval,
@@ -1113,9 +1150,9 @@ func (s *Snapshot) removeExtraCandidate() {
 	if len(tallySlice) > candidateMaxLen {
 		removeNeedTally := tallySlice[candidateMaxLen:]
 		for _, tallySlice := range removeNeedTally {
-			if _, ok := s.SCCoinbase[tallySlice.addr]; ok {
-				delete(s.SCCoinbase, tallySlice.addr)
-			}
+			//if _, ok := s.SCCoinbase[tallySlice.addr]; ok {
+			//	delete(s.SCCoinbase, tallySlice.addr)
+			//}
 			delete(s.Candidates, tallySlice.addr)
 		}
 	}
@@ -1145,10 +1182,14 @@ func (s *Snapshot) verifyTallyCnt() error {
 
 func (s *Snapshot) updateSnapshotBySetSCCoinbase(scCoinbases []SCSetCoinbase) {
 	for _, scc := range scCoinbases {
-		if _, ok := s.SCCoinbase[scc.Signer]; !ok {
-			s.SCCoinbase[scc.Signer] = make(map[common.Hash]common.Address)
+		//if _, ok := s.SCCoinbase[scc.Signer]; !ok {
+		//	s.SCCoinbase[scc.Signer] = make(map[common.Hash]common.Address)
+		//}
+		//s.SCCoinbase[scc.Signer][scc.Hash] = scc.Coinbase
+		if _, ok := s.SCCoinbase[scc.Hash]; !ok {
+			s.SCCoinbase[scc.Hash] = make(map[common.Address]common.Address)
 		}
-		s.SCCoinbase[scc.Signer][scc.Hash] = scc.Coinbase
+		s.SCCoinbase[scc.Hash][scc.Coinbase] = scc.Signer
 	}
 }
 
@@ -1156,21 +1197,25 @@ func (s *Snapshot) isSideChainCoinbase(sc common.Hash, address common.Address, r
 	// check is side chain coinbase
 	// is use the coinbase of main chain as coinbase of side chain , return false
 	// the main chain cloud seal block, but not recommend for send confirm tx usually fail
-	if realtime {
-		for _, signer := range s.Signers {
-			if _, ok := s.SCCoinbase[*signer]; ok {
-				if coinbase, ok := s.SCCoinbase[*signer][sc]; ok && coinbase == address {
-					return true
-				}
-			}
+	//if realtime {
+	//	for _, signer := range s.Signers {
+	//		if _, ok := s.SCCoinbase[*signer]; ok {
+	//			if coinbase, ok := s.SCCoinbase[*signer][sc]; ok && coinbase == address {
+	//				return true
+	//			}
+	//		}
+	//	}
+	//} else {
+	//	for _, coinbaseMap := range s.SCCoinbase {
+	//		if coinbase, ok := coinbaseMap[sc]; ok && coinbase == address {
+	//			return true
+	//		}
+	//	}
+	//}
+	if coinbaseMap, ok := s.SCCoinbase[sc]; ok {
+		if _, ok = coinbaseMap[address]; ok {
+			return true
 		}
-	} else {
-		for _, coinbaseMap := range s.SCCoinbase {
-			if coinbase, ok := coinbaseMap[sc]; ok && coinbase == address {
-				return true
-			}
-		}
-
 	}
 	return false
 }
@@ -1614,9 +1659,9 @@ func (s *Snapshot) updateSnapshotForExpired(headerNumber *big.Int) {
 	// remove 0 stake tally
 	for address, tally := range s.Tally {
 		if tally.Cmp(big.NewInt(0)) <= 0 {
-			if _, ok := s.SCCoinbase[address]; ok {
-				delete(s.SCCoinbase, address)
-			}
+			//if _, ok := s.SCCoinbase[address]; ok {
+			//	delete(s.SCCoinbase, address)
+			//}
 			delete(s.Tally, address)
 		}
 	}
@@ -1690,16 +1735,20 @@ func (s *Snapshot) updateSnapshotForPunish(signerMissing []common.Address, heade
 		}
 	*/
 	// punish the missing signer
-	for _, signerEach := range signerMissing {
-		if _, ok := s.Punished[signerEach]; ok {
-			// 10 times of defaultFullCredit is big enough for calculate signer order
-			if s.Punished[signerEach] <= 10*defaultFullCredit {
-				s.Punished[signerEach] += missingPublishCredit
+    if len(signerMissing) > len(s.SignerMissing) {
+		for _, signerEach := range signerMissing[len(s.SignerMissing):] {
+			if _, ok := s.Punished[signerEach]; ok {
+				// 10 times of defaultFullCredit is big enough for calculate signer order
+				if s.Punished[signerEach] <= 10*defaultFullCredit {
+					s.Punished[signerEach] += missingPublishCredit
+				}
+			} else {
+				s.Punished[signerEach] = missingPublishCredit
 			}
-		} else {
-			s.Punished[signerEach] = missingPublishCredit
 		}
 	}
+	s.SignerMissing = make([]common.Address, len(signerMissing))
+	copy(s.SignerMissing, signerMissing)
 	// reduce the punish of sign signer
 	if _, ok := s.Punished[coinbase]; ok {
 
@@ -1729,7 +1778,8 @@ func (s *Snapshot) updateSnapshotForPunish(signerMissing []common.Address, heade
 func (s *Snapshot) inturn(signer common.Address, headerTime uint64) bool {
 	// if all node stop more than period of one loop
 	if signersCount := len(s.Signers); signersCount > 0 {
-		if loopIndex := ((headerTime - s.LoopStartTime) / s.config.Period) % uint64(signersCount); *s.Signers[loopIndex] == signer {
+		loopIndex := ((headerTime - s.LoopStartTime) / s.config.Period) % uint64(signersCount)
+		if s.Signers[loopIndex].String() == signer.String() {
 			return true
 		}
 	}

@@ -791,6 +791,11 @@ var (
 		Usage: "Period of each side chain block",
 		Value: 1,
 	}
+	Brokers = cli.StringFlag{
+		Name:  "brokers",
+		Usage: "brokers of side chain queue",
+		Value: "",
+	}
 )
 
 // MakeDataDir retrieves the currently requested data directory, terminating

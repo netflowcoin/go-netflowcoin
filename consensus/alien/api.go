@@ -73,10 +73,14 @@ func (api *API) GetSnapshotAtNumber(number uint64) (*Snapshot, error) {
 // todo: add confirm headertime in return snapshot, to minimize the request from side chain
 func (api *API) GetSnapshotByHeaderTime(targetTime uint64, scHash common.Hash) (*Snapshot, error) {
 	header := api.chain.CurrentHeader()
+	if header == nil {
+		return nil, errUnknownBlock
+	}
 	period := new(big.Int).SetUint64(api.chain.Config().Alien.Period)
 	target := new(big.Int).SetUint64(targetTime)
-	if ceil := new(big.Int).Add(new(big.Int).SetUint64(header.Time), period); header == nil || target.Cmp(ceil) > 0 {
-		return nil, errUnknownBlock
+	ceil := new(big.Int).Add(new(big.Int).SetUint64(header.Time), period)
+	if target.Cmp(ceil) > 0 {
+		target = new(big.Int).SetUint64(header.Time)
 	}
 
 	minN := new(big.Int).SetUint64(api.chain.Config().Alien.MaxSignerCount)
@@ -84,24 +88,47 @@ func (api *API) GetSnapshotByHeaderTime(targetTime uint64, scHash common.Hash) (
 	nextN := new(big.Int).SetInt64(0)
 	isNext := false
 	for {
-		if ceil := new(big.Int).Add(new(big.Int).SetUint64(header.Time), period); target.Cmp(new(big.Int).SetUint64(header.Time)) >= 0 && target.Cmp(ceil) < 0 {
+	        ceil = new(big.Int).Add(new(big.Int).SetUint64(header.Time), period)
+		if target.Cmp(new(big.Int).SetUint64(header.Time)) >= 0 && target.Cmp(ceil) < 0 {
 			snap, err := api.alien.snapshot(api.chain, header.Number.Uint64(), header.Hash(), nil, nil, defaultLoopCntRecalculateSigners)
 
 			// replace coinbase by signer settings
-			var scSigners []*common.Address
-			for _, signer := range snap.Signers {
-				replaced := false
-				if _, ok := snap.SCCoinbase[*signer]; ok {
-					if addr, ok := snap.SCCoinbase[*signer][scHash]; ok {
-						replaced = true
-						scSigners = append(scSigners, &addr)
-					}
-				}
-				if !replaced {
-					scSigners = append(scSigners, signer)
+			var scSigners    []*common.Address
+			//for _, signer := range snap.Signers {
+			//	replaced := false
+			//	if _, ok := snap.SCCoinbase[*signer]; ok {
+			//		if addr, ok := snap.SCCoinbase[*signer][scHash]; ok {
+			//			replaced = true
+			//			scSigners = append(scSigners, &addr)
+			//		}
+			//	}
+			//	if !replaced {
+			//		scSigners = append(scSigners, signer)
+			//	}
+			//}
+			for signer, _ := range snap.SCCoinbase[scHash] {
+				scSigners = append(scSigners, &signer)
+			}
+			mcs := Snapshot{
+				LoopStartTime: snap.LoopStartTime,
+				Period: snap.Period,
+				Signers: scSigners,
+				Number: snap.Number,
+				FULBalance: make(map[common.Address]*big.Int),
+				SCMinerRevenue: make(map[common.Address]common.Address),
+				SCFlowPledge: make(map[common.Address]bool),
+			}
+			for address, balance := range snap.FULBalance {
+				mcs.FULBalance[address] = balance
+			}
+			for address, revenue := range snap.RevenueFlow {
+				mcs.SCMinerRevenue[address] = revenue.RevenueAddress
+			}
+			for address, pledge := range snap.FlowPledge {
+				if 0 == pledge.StartHigh {
+					mcs.SCFlowPledge[address] = true
 				}
 			}
-			mcs := Snapshot{LoopStartTime: snap.LoopStartTime, Period: snap.Period, Signers: scSigners, Number: snap.Number}
 			if _, ok := snap.SCNoticeMap[scHash]; ok {
 				mcs.SCNoticeMap = make(map[common.Hash]*CCNotice)
 				mcs.SCNoticeMap[scHash] = snap.SCNoticeMap[scHash]

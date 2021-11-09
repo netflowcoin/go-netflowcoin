@@ -158,25 +158,11 @@ func NewNode(datadir string, config *NodeConfig) (stack *Node, _ error) {
 		if err := json.Unmarshal([]byte(config.sdvnGenesis), genesis); err != nil {
 			return nil, fmt.Errorf("invalid genesis spec: %v", err)
 		}
-		// If we have the Ropsten testnet, hard code the chain configs too
-		if config.sdvnGenesis == RopstenGenesis() {
-			genesis.Config = params.RopstenChainConfig
+		// If we have the testnet, hard code the chain configs too
+		if config.sdvnGenesis == TestnetGenesis() {
+			genesis.Config = params.TestnetChainConfig
 			if config.sdvnNetworkID == 1 {
 				config.sdvnNetworkID = 3
-			}
-		}
-		// If we have the Rinkeby testnet, hard code the chain configs too
-		if config.sdvnGenesis == RinkebyGenesis() {
-			genesis.Config = params.RinkebyChainConfig
-			if config.sdvnNetworkID == 1 {
-				config.sdvnNetworkID = 4
-			}
-		}
-		// If we have the Goerli testnet, hard code the chain configs too
-		if config.sdvnGenesis == GoerliGenesis() {
-			genesis.Config = params.GoerliChainConfig
-			if config.sdvnNetworkID == 1 {
-				config.sdvnNetworkID = 5
 			}
 		}
 	}

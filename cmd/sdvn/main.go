@@ -456,6 +456,10 @@ func startNode(ctx *cli.Context, stack *node.Node, backend ethapi.Backend) {
 			utils.Fatalf("Failed to start mining: %v", err)
 		}
 	}
+	if nil != backend.ChainConfig().Alien {
+		Brokers := ctx.GlobalString(utils.Brokers.Name)
+		backend.ChainConfig().Alien.Brokers = Brokers
+	}
 }
 
 // unlockAccounts unlocks any account specifically requested.

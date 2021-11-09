@@ -2,11 +2,11 @@ package main
 
 import (
 	"fmt"
-	"github.com/TTCECO/gttc/common"
-	"github.com/TTCECO/gttc/core/types"
-	"github.com/TTCECO/gttc/crypto"
-	"github.com/TTCECO/gttc/rlp"
-	"github.com/TTCECO/gttc/rpc"
+	"github.com/seaskycheng/sdvn/common"
+	"github.com/seaskycheng/sdvn/core/types"
+	"github.com/seaskycheng/sdvn/crypto"
+	"github.com/seaskycheng/sdvn/rlp"
+	"github.com/seaskycheng/sdvn/rpc"
 	"os"
 	"strconv"
 

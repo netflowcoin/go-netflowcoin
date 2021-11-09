@@ -78,6 +78,23 @@ const (
 	staleThreshold = 7
 )
 
+type FlowMinerReport struct {
+	ReportNumber uint32
+	FlowValue    uint64
+}
+
+type MinerFlowReportItem struct {
+	Target       common.Address
+	ReportNumber uint32
+	FlowValue    uint64
+}
+
+type MinerFlowReportRecord struct {
+	ChainHash     common.Hash
+	ReportTime    uint64
+	ReportContent []MinerFlowReportItem
+}
+
 // environment is the worker's current environment and holds all of the current state information.
 type environment struct {
 	signer types.Signer
@@ -92,6 +109,8 @@ type environment struct {
 	header   *types.Header
 	txs      []*types.Transaction
 	receipts []*types.Receipt
+
+	flowCensus map[common.Hash]map[common.Address]map[uint64]*FlowMinerReport
 }
 
 // task contains all information for consensus engine sealing and result submitting.
@@ -438,6 +457,11 @@ func (w *worker) mainLoop() {
 	defer w.chainHeadSub.Unsubscribe()
 	defer w.chainSideSub.Unsubscribe()
 
+	alienDelay := time.Duration(300) * time.Second
+	if w.chainConfig.Alien != nil && w.chainConfig.Alien.Period > 0 {
+		alienDelay = time.Duration(w.chainConfig.Alien.Period) * time.Second
+	}
+
 	for {
 		select {
 		case req := <-w.newWorkCh:
@@ -515,11 +539,17 @@ func (w *worker) mainLoop() {
 				// submit mining work here since all empty submission will be rejected
 				// by alien or clique. Of course the advance sealing(empty submission) is disabled.
 				if (w.chainConfig.Alien != nil && w.chainConfig.Alien.Period == 0) || (w.chainConfig.Clique != nil && w.chainConfig.Clique.Period == 0) {
-					log.Warn("mainLoop alien commitNewWork 2")
 					w.commitNewWork(nil, true, time.Now().Unix())
 				}
 			}
 			atomic.AddInt32(&w.newTxs, int32(len(ev.Txs)))
+
+		case <-time.After(alienDelay):
+			// try to seal block in each period, even no new block received in dpos
+			if w.chainConfig.Alien != nil && w.chainConfig.Alien.Period > 0 {
+			log.Warn("mainLoop alienDelay")
+				w.startCh <- struct{}{}
+			}
 
 		// System stopped
 		case <-w.exitCh:
@@ -658,12 +688,13 @@ func (w *worker) makeCurrent(parent *types.Block, header *types.Header) error {
 	state.StartPrefetcher("miner")
 
 	env := &environment{
-		signer:    types.MakeSigner(w.chainConfig, header.Number),
-		state:     state,
-		ancestors: mapset.NewSet(),
-		family:    mapset.NewSet(),
-		uncles:    mapset.NewSet(),
-		header:    header,
+		signer:     types.MakeSigner(w.chainConfig, header.Number),
+		state:      state,
+		ancestors:  mapset.NewSet(),
+		family:     mapset.NewSet(),
+		uncles:     mapset.NewSet(),
+		header:     header,
+		flowCensus: make(map[common.Hash]map[common.Address]map[uint64]*FlowMinerReport),
 	}
 	// when 08 is processed ancestors contain 07 (quick block)
 	for _, ancestor := range w.chain.GetBlocksFromHash(parent.Hash(), 7) {
@@ -1051,6 +1082,24 @@ func (w *worker) commit(uncles []*types.Header, interval func(), update bool, st
 	receipts := copyReceipts(w.current.receipts)
 	s := w.current.state.Copy()
 	parent := w.chain.CurrentBlock()
+	var flowCensus []consensus.FlowReportRecord
+	for chain, item := range w.current.flowCensus {
+		census := consensus.FlowReportRecord {
+			ChainHash: chain,
+			ReportContent: []consensus.FlowReportItem{},
+		}
+		for address, item1 := range item {
+			for reportTime, report := range item1 {
+				census.ReportContent = append(census.ReportContent, consensus.FlowReportItem{
+					Target: address,
+					ReportTime: reportTime,
+					ReportNumber: report.ReportNumber,
+					FlowValue: report.FlowValue,
+				})
+			}
+		}
+		flowCensus = append(flowCensus, census)
+	}
 	if w.chainConfig.Alien != nil {
 		grantProfit, payProfit := w.engine.GrantProfit(w.chain, w.current.header, s)
 		if nil != grantProfit {
@@ -1084,9 +1133,9 @@ func (w *worker) commit(uncles []*types.Header, interval func(), update bool, st
 				}
 			}
 		}
-		block, err = w.engine.FinalizeAndAssemble(w.chain, w.current.header, s, w.current.txs, uncles, receipts, payProfit, w.gasReward)
+		block, err = w.engine.FinalizeAndAssemble(w.chain, w.current.header, s, w.current.txs, uncles, receipts, payProfit, w.gasReward, flowCensus)
 	} else {
-		block, err = w.engine.FinalizeAndAssemble(w.chain, w.current.header, s, w.current.txs, uncles, receipts, nil, w.gasReward)
+		block, err = w.engine.FinalizeAndAssemble(w.chain, w.current.header, s, w.current.txs, uncles, receipts, nil, w.gasReward, flowCensus)
 	}
 	w.gasReward = big.NewInt(0)
 	if err != nil {

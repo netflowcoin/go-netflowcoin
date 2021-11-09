@@ -1,7 +1,11 @@
+20211110 seaskycheng V0.5.2
+         add multi-children-chain support
+		 fix stop miner when miner punished
+		 fix system lock parameter
 20211019 seaskycheng V0.5.1
          fix first snapshot
-		 fix address UnmarshalText without prefix
-		 fix bigint UnmarshalText without prefix
+         fix address UnmarshalText without prefix
+         fix bigint UnmarshalText without prefix
 20211013 seaskycheng V0.5
          limit min gas price is 0.0037NFC
          add miner bind revenue address
