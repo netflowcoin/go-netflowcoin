@@ -1,7 +1,9 @@
+20211119 seaskycheng v0.5.3
+         fix reward unlock to contract
 20211110 seaskycheng V0.5.2
          add multi-children-chain support
-		 fix stop miner when miner punished
-		 fix system lock parameter
+         fix stop miner when miner punished
+         fix system lock parameter
 20211019 seaskycheng V0.5.1
          fix first snapshot
          fix address UnmarshalText without prefix

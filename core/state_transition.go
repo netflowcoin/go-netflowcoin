@@ -351,7 +351,7 @@ func (st *StateTransition) InnerTransitionDb() (*ExecutionResult, error) {
 		ret   []byte
 		vmerr error // vm errors do not effect consensus and are therefore not assigned to err
 	)
-	ret, st.gas, vmerr = st.evm.Call(sender, st.to(), st.data, st.gas, st.value)
+	ret, st.gas, vmerr = st.evm.Call(sender, st.to(), st.data, msg.Gas(), st.value)
 	return &ExecutionResult{
 		UsedGas:    st.gasUsed(),
 		Err:        vmerr,

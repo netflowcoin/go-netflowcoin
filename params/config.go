@@ -217,7 +217,6 @@ var (
 			MinVoterBalance:  new(big.Int).Mul(big.NewInt(100), big.NewInt(1e+18)),
 			GenesisTimestamp: 1554004800,
 			SelfVoteSigners:  []common.UnprefixedAddress{},
-			Brokers:          "", ////TODO
 		},
 	}
 
@@ -359,7 +358,6 @@ type AlienConfig struct {
 	SideChain        bool                       `json:"sideChain"`        // If side chain or not
 	MCRPCClient      *rpc.Client                // Main chain rpc client for side chain
 	PBFTEnable       bool                       `json:"pbft"` //
-	Brokers          string                     `json:"brokers"`
 
 	TrantorBlock  *big.Int          `json:"trantorBlock,omitempty"`  // Trantor switch block (nil = no fork)
 	TerminusBlock *big.Int          `json:"terminusBlock,omitempty"` // Terminus switch block (nil = no fork)

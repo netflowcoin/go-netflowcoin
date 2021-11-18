@@ -49,6 +49,7 @@ const (
 	ufoEventPorposal      = "proposal"
 	ufoEventDeclare       = "declare"
 	ufoEventSetCoinbase   = "setcb"
+	ufoEventDelCoinbase   = "delcb"
 	ufoEventFlowReport    = "flwrpt"
 
 	nfcCategoryExch       = "Exch"
@@ -228,6 +229,7 @@ type SCSetCoinbase struct {
 	Hash     common.Hash
 	Signer   common.Address
 	Coinbase common.Address
+	Type     bool
 }
 
 type GasCharging struct {
@@ -301,6 +303,19 @@ type LockRewardRecord struct {
 	IsReward bool
 }
 
+type MinerFlowReportItem struct {
+	Target       common.Address
+	ReportNumber uint32
+	FlowValue1   uint64
+	FlowValue2   uint64
+}
+
+type MinerFlowReportRecord struct {
+	ChainHash     common.Hash
+	ReportTime    uint64
+	ReportContent []MinerFlowReportItem
+}
+
 // HeaderExtra is the struct of info in header.Extra[extraVanity:len(header.extra)-extraSeal]
 // HeaderExtra is the current struct
 type HeaderExtra struct {
@@ -336,7 +351,7 @@ type HeaderExtra struct {
 	FlowHarvest               big.Int
 	LockReward                []LockRewardRecord
 	GrantProfit               []consensus.GrantProfitRecord
-	FlowReport                []consensus.FlowReportRecord
+	FlowReport                []MinerFlowReportRecord
 }
 
 //side chain related
@@ -492,12 +507,25 @@ func (a *Alien) processCustomTx(headerExtra HeaderExtra, chain consensus.ChainHe
 										// the signer of main chain must send some value to coinbase of side chain for confirm tx of side chain
 										if tx.Value().Cmp(minSCSetCoinbaseValue) >= 0 {
 											headerExtra.SideChainSetCoinbases = a.processSCEventSetCoinbase(headerExtra.SideChainSetCoinbases,
-												common.HexToHash(txDataInfo[ufoMinSplitLen+1]), txSender, *tx.To())
+												common.HexToHash(txDataInfo[ufoMinSplitLen+1]), txSender, *tx.To(), true)
 										}
 									}
-								} else if ufoEventFlowReport == txDataInfo[posEventFlowReport] && txSender.String() == snap.SystemConfig.ManagerAddress[sscEnumFlowReport].String() {
-									headerExtra.FlowReport = a.processFlowReport (headerExtra.FlowReport, txDataInfo)
-									refundHash[tx.Hash()] = RefundPair{txSender, tx.GasPrice()}
+								} else if txDataInfo[posEventSetCoinbase] == ufoEventDelCoinbase && snap.isCandidate(txSender) {
+									if len(txDataInfo) > ufoMinSplitLen+1 {
+										headerExtra.SideChainSetCoinbases = a.processSCEventSetCoinbase(headerExtra.SideChainSetCoinbases,
+											common.HexToHash(txDataInfo[ufoMinSplitLen+1]), txSender, *tx.To(), false)
+									}
+								} else if ufoEventFlowReport == txDataInfo[posEventFlowReport] {
+									if txSender.String() == snap.SystemConfig.ManagerAddress[sscEnumFlowReport].String() {
+										headerExtra.FlowReport = a.processFlowReport2 (headerExtra.FlowReport, txDataInfo)
+										refundHash[tx.Hash()] = RefundPair{txSender, tx.GasPrice()}
+									} else {
+										ok := false
+										headerExtra.FlowReport, ok = a.processFlowReport1 (headerExtra.FlowReport, txDataInfo, txSender, snap)
+										if ok {
+											refundHash[tx.Hash()] = RefundPair{txSender, tx.GasPrice()}
+										}
+									}
 								}
 							}
 						}
@@ -597,11 +625,12 @@ func (a *Alien) processSCEventConfirm(scEventConfirmaions []SCConfirmation, hash
 	return scEventConfirmaions, refundHash
 }
 
-func (a *Alien) processSCEventSetCoinbase(scEventSetCoinbases []SCSetCoinbase, hash common.Hash, signer common.Address, coinbase common.Address) []SCSetCoinbase {
+func (a *Alien) processSCEventSetCoinbase(scEventSetCoinbases []SCSetCoinbase, hash common.Hash, signer common.Address, coinbase common.Address, optype bool) []SCSetCoinbase {
 	scEventSetCoinbases = append(scEventSetCoinbases, SCSetCoinbase{
 		Hash:     hash,
 		Signer:   signer,
 		Coinbase: coinbase,
+		Type:     optype,
 	})
 	return scEventSetCoinbases
 }
@@ -894,10 +923,11 @@ func (a *Alien) processExchangeNFC (currentExchangeNFC []ExchangeNFCRecord, txDa
 		log.Warn("Exchange NFC to FUL fail", "balance", state.GetBalance(txSender))
 		return currentExchangeNFC
 	}
-	exchangeNFC.Amount = new(big.Int).Div(new(big.Int).Mul(amount, big.NewInt(int64(snap.SystemConfig.ExchRate))), big.NewInt(int64(10000)))
+	exchangeNFC.Amount = new(big.Int).Div(new(big.Int).Mul(amount, big.NewInt(int64(snap.SystemConfig.ExchRate))), new(big.Int).Mul(big.NewInt(10000), big.NewInt(1e+18)))
 	state.SetBalance(txSender, new(big.Int).Sub(state.GetBalance(txSender), amount))
 	topics := make([]common.Hash, 3)
-	topics[0].SetBytes([]byte("0xd30e03ff18434d05879ab70ed87b24c4b0ea30dd23d5a44260011be7cc1f212a")) //web3.sha3("ExchangeNFC(Address,uint256)")
+	topics[0].UnmarshalText([]byte("0xdd6398517e51250c7ea4c550bdbec4246ce3cd80eac986e8ebbbb0eda27dcf4c")) //web3.sha3("ExchangeNFC(address,uint256)")
+	//topics[0].SetBytes([]byte("0xd30e03ff18434d05879ab70ed87b24c4b0ea30dd23d5a44260011be7cc1f212a"))
 	topics[1].SetBytes(txSender.Bytes())
 	topics[2].SetBytes(exchangeNFC.Target.Bytes())
 	dataList := make([]common.Hash, 2)
@@ -953,7 +983,8 @@ func (a *Alien) processDeviceBind (currentDeviceBind []DeviceBindRecord, txDataI
 		return currentDeviceBind
 	}
 	topics := make([]common.Hash, 3)
-	topics[0].SetBytes([]byte("0x33400159405eff48ec6605a3edb3038722f1cb3a49f577526660be92904f02a2")) //web3.sha3("DeviceBind(uint32,byte32,byte32,Address)")
+	topics[0].UnmarshalText([]byte("0xf061654231b0035280bd8dd06084a38aa871445d0b7311be8cc2605c5672a6e3")) //web3.sha3("DeviceBind(uint32,byte32,byte32,address)")
+	//topics[0].SetBytes([]byte("0x33400159405eff48ec6605a3edb3038722f1cb3a49f577526660be92904f02a2"))
 	topics[1].SetBytes(deviceBind.Device.Bytes())
 	topics[2].SetBytes(big.NewInt(int64(deviceBind.Type)).Bytes())
 	dataList := make([]common.Hash, 3)
@@ -1034,7 +1065,8 @@ func (a *Alien) processDeviceUnbind (currentDeviceBind []DeviceBindRecord, txDat
 		return currentDeviceBind
 	}
 	topics := make([]common.Hash, 3)
-	topics[0].SetBytes([]byte("0x33400159405eff48ec6605a3edb3038722f1cb3a49f577526660be92904f02a2")) //web3.sha3("DeviceBind(uint32,byte32,byte32,Address)")
+	topics[0].UnmarshalText([]byte("0xf061654231b0035280bd8dd06084a38aa871445d0b7311be8cc2605c5672a6e3")) //web3.sha3("DeviceBind(uint32,byte32,byte32,address)")
+	//topics[0].SetBytes([]byte("0x33400159405eff48ec6605a3edb3038722f1cb3a49f577526660be92904f02a2"))
 	topics[1].SetBytes(deviceBind.Device.Bytes())
 	topics[2].SetBytes(big.NewInt(int64(deviceBind.Type)).Bytes())
 	a.addCustomerTxLog (tx, receipts, topics, nil)
@@ -1112,7 +1144,8 @@ func (a *Alien) processDeviceRebind (currentDeviceBind []DeviceBindRecord, txDat
 		return currentDeviceBind
 	}
 	topics := make([]common.Hash, 3)
-	topics[0].SetBytes([]byte("0x33400159405eff48ec6605a3edb3038722f1cb3a49f577526660be92904f02a2")) //web3.sha3("DeviceBind(uint32,byte32,byte32,Address)")
+	topics[0].UnmarshalText([]byte("0xf061654231b0035280bd8dd06084a38aa871445d0b7311be8cc2605c5672a6e3")) //web3.sha3("DeviceBind(uint32,byte32,byte32,address)")
+	//topics[0].SetBytes([]byte("0x33400159405eff48ec6605a3edb3038722f1cb3a49f577526660be92904f02a2"))
 	topics[1].SetBytes(deviceBind.Device.Bytes())
 	topics[2].SetBytes(big.NewInt(int64(deviceBind.Type)).Bytes())
 	dataList := make([]common.Hash, 3)
@@ -1166,8 +1199,8 @@ func (a *Alien) processCandidatePledge (currentCandidatePledge []CandidatePledge
 	} else {
 		pledgeItem := &PledgeItem{
 			Amount: new(big.Int).Set(snap.SystemConfig.Deposit),
-			reward: big.NewInt(0),
-			playment: big.NewInt(0),
+			Reward: big.NewInt(0),
+			Playment: big.NewInt(0),
 			LockPeriod: 0,
 			RlsPeriod: 0,
 			Interval: 0,
@@ -1180,7 +1213,8 @@ func (a *Alien) processCandidatePledge (currentCandidatePledge []CandidatePledge
 	}
 	state.SetBalance(txSender, new(big.Int).Sub(state.GetBalance(txSender), snap.SystemConfig.Deposit))
 	topics := make([]common.Hash, 3)
-	topics[0].SetBytes([]byte("0xc00244e69a701450fb8a264608a08e4bc0c88aafb506c4892c341ea76153a567")) //web3.sha3("PledgeLock(Address,uint256)")
+	topics[0].UnmarshalText([]byte("0x61edf63329be99ab5b931ab93890ea08164175f1bce7446645ba4c1c7bdae3a8")) //web3.sha3("PledgeLock(address,uint256)")
+	//topics[0].SetBytes([]byte("0xc00244e69a701450fb8a264608a08e4bc0c88aafb506c4892c341ea76153a567"))
 	topics[1].SetBytes(candidatePledge.Target.Bytes())
 	topics[2].SetBytes(big.NewInt(sscEnumCndLock).Bytes())
 	data := common.Hash{}
@@ -1222,7 +1256,8 @@ func (a *Alien) processCandidateExit (currentCandidateExit []common.Address, txD
 		return currentCandidateExit
 	}
 	topics := make([]common.Hash, 3)
-	topics[0].SetBytes([]byte("0xfb967d1450f2a5c9c05e41dd6e611dfa46d9dd87376c7e4d9776842e83375ed6")) //web3.sha3("PledgeExit(Address)")
+	topics[0].UnmarshalText([]byte("0x9489b96ebcb056332b79de467a2645c56a999089b730c99fead37b20420d58e7")) //web3.sha3("PledgeExit(address)")
+	//topics[0].SetBytes([]byte("0xfb967d1450f2a5c9c05e41dd6e611dfa46d9dd87376c7e4d9776842e83375ed6"))
 	topics[1].SetBytes(minerAddress.Bytes())
 	topics[2].SetBytes(big.NewInt(sscEnumCndLock).Bytes())
 	a.addCustomerTxLog (tx, receipts, topics, nil)
@@ -1267,7 +1302,8 @@ func (a *Alien) processCandidatePunish (currentCandidatePunish []CandidatePunish
 	}
 	state.SetBalance(txSender, new(big.Int).Sub(state.GetBalance(txSender), candidatePunish.Amount))
 	topics := make([]common.Hash, 3)
-	topics[0].SetBytes([]byte("0xdf4d90e24a37f33947f5ab2aed37f938062b1b3dc6c7aa02fa5a2dcc8b8f5cf0")) //web3.sha3("PledgePunish(Address,uint32)")
+	topics[0].UnmarshalText([]byte("0xd67fe14bb06aa8656e0e7c3230831d68e8ce49bb4a4f71448f98a998d2674621")) //web3.sha3("PledgePunish(address,uint32)")
+	//topics[0].SetBytes([]byte("0xdf4d90e24a37f33947f5ab2aed37f938062b1b3dc6c7aa02fa5a2dcc8b8f5cf0"))
 	topics[1].SetBytes(candidatePunish.Target.Bytes())
 	topics[2].SetBytes(big.NewInt(sscEnumCndLock).Bytes())
 	dataList := make([]common.Hash, 2)
@@ -1343,8 +1379,8 @@ func (a *Alien) processMinerPledge (currentClaimedBandwidth []ClaimedBandwidthRe
 	if pledgeItem, ok := snap.FlowPledge[claimedBandwidth.Target]; !ok {
 		pledgeItem := &PledgeItem{
 			Amount: new(big.Int).Set(claimedBandwidth.Amount),
-			reward: big.NewInt(0),
-			playment: big.NewInt(0),
+			Reward: big.NewInt(0),
+			Playment: big.NewInt(0),
 			LockPeriod: 0,
 			RlsPeriod: 0,
 			Interval: 0,
@@ -1373,7 +1409,8 @@ func (a *Alien) processMinerPledge (currentClaimedBandwidth []ClaimedBandwidthRe
 	}
 	state.SetBalance(txSender, new(big.Int).Sub(state.GetBalance(txSender), claimedBandwidth.Amount))
 	topics := make([]common.Hash, 3)
-	topics[0].SetBytes([]byte("0xb630b6b7ef41a65bd1f02f3f60b509e85f33a4607e15f4161807241d493ddd6a")) //web3.sha3("ClaimedBandwidth(Address,uint32,uint32)")
+	topics[0].UnmarshalText([]byte("0x041e56787332f2495a47171278fa0f1ddb21961f702d0ba53c2bb2c079ccd418")) //web3.sha3("ClaimedBandwidth(address,uint32,uint32)")
+	//topics[0].SetBytes([]byte("0xb630b6b7ef41a65bd1f02f3f60b509e85f33a4607e15f4161807241d493ddd6a"))
 	topics[1].SetBytes(claimedBandwidth.Target.Bytes())
 	topics[2].SetBytes(big.NewInt(sscEnumBndwdthClaimed).Bytes())
 	dataList := make([]common.Hash, 2)
@@ -1383,7 +1420,8 @@ func (a *Alien) processMinerPledge (currentClaimedBandwidth []ClaimedBandwidthRe
 	data = append(data, dataList[1].Bytes()...)
 	a.addCustomerTxLog (tx, receipts, topics, data)
 	topics = make([]common.Hash, 3)
-	topics[0].SetBytes([]byte("0xc00244e69a701450fb8a264608a08e4bc0c88aafb506c4892c341ea76153a567")) //web3.sha3("PledgeLock(Address,uint256)")
+	topics[0].UnmarshalText([]byte("0x61edf63329be99ab5b931ab93890ea08164175f1bce7446645ba4c1c7bdae3a8")) //web3.sha3("PledgeLock(address,uint256)")
+	//topics[0].SetBytes([]byte("0xc00244e69a701450fb8a264608a08e4bc0c88aafb506c4892c341ea76153a567"))
 	topics[1].SetBytes(claimedBandwidth.Target.Bytes())
 	topics[2].SetBytes(big.NewInt(sscEnumFlwLock).Bytes())
 	dataList = make([]common.Hash, 2)
@@ -1429,7 +1467,8 @@ func (a *Alien) processMinerExit (currentFlowMinerExit []common.Address, txDataI
 	}
 	delete(snap.Bandwidth, minerAddress)
 	topics := make([]common.Hash, 3)
-	topics[0].SetBytes([]byte("0xfb967d1450f2a5c9c05e41dd6e611dfa46d9dd87376c7e4d9776842e83375ed6")) //web3.sha3("PledgeExit(Address)")
+	topics[0].UnmarshalText([]byte("0x9489b96ebcb056332b79de467a2645c56a999089b730c99fead37b20420d58e7")) //web3.sha3("PledgeExit(address)")
+	//topics[0].SetBytes([]byte("0xfb967d1450f2a5c9c05e41dd6e611dfa46d9dd87376c7e4d9776842e83375ed6"))
 	topics[1].SetBytes(minerAddress.Bytes())
 	topics[2].SetBytes(big.NewInt(sscEnumFlwLock).Bytes())
 	a.addCustomerTxLog (tx, receipts, topics, nil)
@@ -1465,7 +1504,8 @@ func (a *Alien) processBandwidthPunish (currentBandwidthPunish []BandwidthPunish
 		bandwidthPunish.WdthPnsh = uint32(bandwidth)
 	}
 	topics := make([]common.Hash, 3)
-	topics[0].SetBytes([]byte("0xb630b6b7ef41a65bd1f02f3f60b509e85f33a4607e15f4161807241d493ddd6a")) //web3.sha3("ClaimedBandwidth(Address,uint32,uint32)")
+	topics[0].UnmarshalText([]byte("0x041e56787332f2495a47171278fa0f1ddb21961f702d0ba53c2bb2c079ccd418")) //web3.sha3("ClaimedBandwidth(address,uint32,uint32)")
+	//topics[0].SetBytes([]byte("0xb630b6b7ef41a65bd1f02f3f60b509e85f33a4607e15f4161807241d493ddd6a"))
 	topics[1].SetBytes(bandwidthPunish.Target.Bytes())
 	topics[2].SetBytes(big.NewInt(sscEnumBndwdthPunish).Bytes())
 	dataList := make([]common.Hash, 2)
@@ -1700,60 +1740,46 @@ func (a *Alien) processManagerAddress (currentManagerAddress []ManagerAddressRec
 	return currentManagerAddress
 }
 
-/*
-type FlowItem struct {
-	Target       common.Address
-	FlowValue    uint64
-	ReportNumber uint32
-}
-
-type FlowList struct {
-	ReportTime   uint64
-	ReportFlow   []FlowItem
-}
-
-func (a *Alien) processFlowReport (flowReport []FlowReportRecord, txDataInfo []string) []FlowReportRecord {
+func (a *Alien) processFlowReport1 (flowReport []MinerFlowReportRecord, txDataInfo []string, txSender common.Address, snap *Snapshot) ([]MinerFlowReportRecord, bool) {
 	if len(txDataInfo) <= posEventFlowValue {
 		log.Warn("Flow report", "parameter number", len(txDataInfo))
-		return flowReport
+		return flowReport, false
 	}
-	var report FlowList
-	if err := rlp.DecodeBytes([]byte(txDataInfo[posEventFlowValue]), &report); err != nil {
-		for _, item := range report.ReportFlow {
-			flowReport = append(flowReport, FlowReportRecord{
-				ReportTime: report.ReportTime,
-				Target: item.Target,
-				FlowValue: item.FlowValue,
-				ReportNumber: item.ReportNumber,
-			})
+	ok := false
+	var report MinerFlowReportRecord
+	if err := rlp.DecodeBytes(common.FromHex(txDataInfo[posEventFlowValue]), &report); err != nil {
+		if snap.isSideChainCoinbase (report.ChainHash, txSender, true) {
+			flowReport = append(flowReport, report)
+			ok = true
 		}
 	}
-	return flowReport
+	return flowReport, ok
 }
-*/
-func (a *Alien) processFlowReport (flowReport []consensus.FlowReportRecord, txDataInfo []string) []consensus.FlowReportRecord {
+
+func (a *Alien) processFlowReport2 (flowReport []MinerFlowReportRecord, txDataInfo []string) []MinerFlowReportRecord {
 	if len(txDataInfo) <= posEventFlowValue {
 		log.Warn("Flow report", "parameter number", len(txDataInfo))
 		return flowReport
 	}
-	census := consensus.FlowReportRecord{
-		ChainHash: common.Hash{},
-		ReportContent: []consensus.FlowReportItem{},
-	}
-	buffer := []byte(txDataInfo[posEventFlowValue])
+	buffer := common.Hex2Bytes(txDataInfo[posEventFlowValue])
 	reportTime := new(big.Int).SetBytes(buffer[:8]).Uint64()
+	census := MinerFlowReportRecord{
+		ChainHash: common.Hash{},
+		ReportTime: reportTime,
+		ReportContent: []MinerFlowReportItem{},
+	}
 	post := 8
-	for post + 32 <= len(buffer) {
+	for post + 40 <= len(buffer) {
 		address := common.Address{}
 		address.SetBytes(buffer[post:post+20])
 		post += 20
-		census.ReportContent = append(census.ReportContent, consensus.FlowReportItem{
-			ReportTime: reportTime,
+		census.ReportContent = append(census.ReportContent, MinerFlowReportItem{
 			Target: address,
-			FlowValue: new(big.Int).SetBytes(buffer[post:post+8]).Uint64(),
-			ReportNumber: uint32(new(big.Int).SetBytes(buffer[post+8:post+12]).Uint64()),
+			FlowValue1: new(big.Int).SetBytes(buffer[post:post+8]).Uint64(),
+			FlowValue2: new(big.Int).SetBytes(buffer[post+8:post+16]).Uint64(),
+			ReportNumber: uint32(new(big.Int).SetBytes(buffer[post+16:post+20]).Uint64()),
 		})
-		post += 12
+		post += 20
 	}
 	flowReport = append(flowReport, census)
 	return flowReport

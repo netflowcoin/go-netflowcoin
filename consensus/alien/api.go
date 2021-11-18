@@ -114,12 +114,22 @@ func (api *API) GetSnapshotByHeaderTime(targetTime uint64, scHash common.Hash) (
 				Period: snap.Period,
 				Signers: scSigners,
 				Number: snap.Number,
-				FULBalance: make(map[common.Address]*big.Int),
+				SCFULBalance: make(map[common.Address]*big.Int),
 				SCMinerRevenue: make(map[common.Address]common.Address),
 				SCFlowPledge: make(map[common.Address]bool),
 			}
-			for address, balance := range snap.FULBalance {
-				mcs.FULBalance[address] = balance
+			for address, item := range snap.FULBalance {
+				balance := new(big.Int).Set(item.Balance)
+				for sc, cost := range item.CostTotal {
+					if sc.String() == scHash.String() {
+						continue
+					}
+					balance = new(big.Int).Sub(balance, cost)
+					if 0 >= balance.Cmp(big.NewInt(0)) {
+						break
+					}
+				}
+				mcs.SCFULBalance[address] = balance
 			}
 			for address, revenue := range snap.RevenueFlow {
 				mcs.SCMinerRevenue[address] = revenue.RevenueAddress

@@ -25,6 +25,7 @@ import (
 	"github.com/seaskycheng/sdvn/core/types"
 	"github.com/seaskycheng/sdvn/core/vm"
 	"github.com/seaskycheng/sdvn/crypto"
+	"github.com/seaskycheng/sdvn/log"
 	"github.com/seaskycheng/sdvn/params"
 	"math/big"
 )
@@ -90,7 +91,7 @@ func (p *StateProcessor) Process(block *types.Block, statedb *state.StateDB, cfg
 		nilHash := common.Address{}
 		zeroHash := common.BigToAddress(big.NewInt(0))
 		for _, item := range grantProfit {
-			data := []byte("0xf8ca0c93") //web3.sha3("GrantProfit(Address)") //0xf8ca0c934f9eec75963fe39ac7bd4ec234923919b6e0ca0756337908237f9bdf
+			data := common.FromHex("0xeec31edf") //web3.sha3("GrantProfit(address)") //0xeec31edfe9a5655533e7991d096c3143d669dde6cd213b33851b6cd2fe23c420
 			if nilHash == item.MultiSignature || zeroHash == item.MultiSignature {
 				data = append(data, item.RevenueAddress.Hash().Bytes()...)
 			} else {
@@ -102,7 +103,8 @@ func (p *StateProcessor) Process(block *types.Block, statedb *state.StateDB, cfg
 			msg := types.NewMessage(item.MinerAddress, &item.RevenueContract, uint64(txIndex), item.Amount, gasLimit, gasPrice, gasPrice, gasPrice, data, nil,false)
 			snap := statedb.Snapshot()
 			statedb.Prepare(tx.Hash(), block.Hash(), txIndex)
-			receipt, err := GrantProfit(tx, msg, p.config, p.bc, nil, gp, statedb, header, usedGas, vmenv.Config)
+			gasPool := new(GasPool).AddGas(header.GasLimit)
+			receipt, err := GrantProfit(tx, msg, p.config, p.bc, nil, gasPool, statedb, header, usedGas, vmenv.Config)
 			if err == nil {
 				if nil == payProfit {
 					payProfit = []consensus.GrantProfitRecord{}
@@ -112,11 +114,12 @@ func (p *StateProcessor) Process(block *types.Block, statedb *state.StateDB, cfg
 				txIndex++
 			} else {
 				statedb.RevertToSnapshot(snap)
+				log.Warn("StateProcessor GrantProfit", "err", err)
 			}
 		}
 	}
 	// Finalize the block, applying any consensus engine specific extras (e.g. block rewards)
-	p.engine.Finalize(p.bc, header, statedb, block.Transactions(), block.Uncles(), receipts, payProfit, vmenv.GasReward, nil)
+	p.engine.Finalize(p.bc, header, statedb, block.Transactions(), block.Uncles(), receipts, payProfit, vmenv.GasReward)
 	for _, receipt := range receipts {
 		allLogs = append(allLogs, receipt.Logs...)
 	}
@@ -198,9 +201,13 @@ func GrantProfit (tx *types.Transaction, msg types.Message, config *params.Chain
 	evm.Reset(txContext, statedb)
 	// Apply the transaction to the current state (included in the env).
 	result, err := ApplyInnerMessage(evm, msg, gp)
-	if err != nil {
+	if err != nil || result.Err != nil {
 		statedb.SubBalance(msg.From(), msg.Value())
-		return nil, err
+		if err != nil {
+			return nil, err
+		} else {
+			return nil, result.Err
+		}
 	}
 	// Update the state with pending changes.
 	var root []byte

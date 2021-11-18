@@ -78,23 +78,6 @@ const (
 	staleThreshold = 7
 )
 
-type FlowMinerReport struct {
-	ReportNumber uint32
-	FlowValue    uint64
-}
-
-type MinerFlowReportItem struct {
-	Target       common.Address
-	ReportNumber uint32
-	FlowValue    uint64
-}
-
-type MinerFlowReportRecord struct {
-	ChainHash     common.Hash
-	ReportTime    uint64
-	ReportContent []MinerFlowReportItem
-}
-
 // environment is the worker's current environment and holds all of the current state information.
 type environment struct {
 	signer types.Signer
@@ -109,8 +92,6 @@ type environment struct {
 	header   *types.Header
 	txs      []*types.Transaction
 	receipts []*types.Receipt
-
-	flowCensus map[common.Hash]map[common.Address]map[uint64]*FlowMinerReport
 }
 
 // task contains all information for consensus engine sealing and result submitting.
@@ -694,7 +675,6 @@ func (w *worker) makeCurrent(parent *types.Block, header *types.Header) error {
 		family:     mapset.NewSet(),
 		uncles:     mapset.NewSet(),
 		header:     header,
-		flowCensus: make(map[common.Hash]map[common.Address]map[uint64]*FlowMinerReport),
 	}
 	// when 08 is processed ancestors contain 07 (quick block)
 	for _, ancestor := range w.chain.GetBlocksFromHash(parent.Hash(), 7) {
@@ -1082,24 +1062,6 @@ func (w *worker) commit(uncles []*types.Header, interval func(), update bool, st
 	receipts := copyReceipts(w.current.receipts)
 	s := w.current.state.Copy()
 	parent := w.chain.CurrentBlock()
-	var flowCensus []consensus.FlowReportRecord
-	for chain, item := range w.current.flowCensus {
-		census := consensus.FlowReportRecord {
-			ChainHash: chain,
-			ReportContent: []consensus.FlowReportItem{},
-		}
-		for address, item1 := range item {
-			for reportTime, report := range item1 {
-				census.ReportContent = append(census.ReportContent, consensus.FlowReportItem{
-					Target: address,
-					ReportTime: reportTime,
-					ReportNumber: report.ReportNumber,
-					FlowValue: report.FlowValue,
-				})
-			}
-		}
-		flowCensus = append(flowCensus, census)
-	}
 	if w.chainConfig.Alien != nil {
 		grantProfit, payProfit := w.engine.GrantProfit(w.chain, w.current.header, s)
 		if nil != grantProfit {
@@ -1107,20 +1069,21 @@ func (w *worker) commit(uncles []*types.Header, interval func(), update bool, st
 			zeroHash := common.BigToAddress(big.NewInt(0))
 			txIndex := w.current.tcount
 			for _, item := range grantProfit {
-				data := []byte("0xf8ca0c93") //web3.sha3("GrantProfit(Address)") //0xf8ca0c934f9eec75963fe39ac7bd4ec234923919b6e0ca0756337908237f9bdf
+				data := common.FromHex("0xeec31edf") //web3.sha3("GrantProfit(address)") //0xeec31edfe9a5655533e7991d096c3143d669dde6cd213b33851b6cd2fe23c420
 				if nilHash == item.MultiSignature || zeroHash == item.MultiSignature {
 					data = append(data, item.RevenueAddress.Hash().Bytes()...)
 				} else {
 					data = append(data, item.MultiSignature.Hash().Bytes()...)
 				}
 				gasPrice := new(big.Int).SetUint64(176190476190)
-				gasLimit := uint64(200000)
+				gasLimit := uint64(5000000000)
 				tx := types.NewTransaction(uint64(txIndex), item.RevenueContract, item.Amount, gasLimit, gasPrice, data)
 				msg := types.NewMessage(item.MinerAddress, &item.RevenueContract, uint64(txIndex), item.Amount, gasLimit, gasPrice, gasPrice, gasPrice, data, nil,false)
 				// Start executing the transaction
 				snap := s.Snapshot()
 				s.Prepare(tx.Hash(), common.Hash{}, txIndex)
-				receipt, err := core.GrantProfit(tx, msg, w.chainConfig, w.chain, &w.coinbase, w.current.gasPool, w.current.state, w.current.header, &w.current.header.GasUsed, *w.chain.GetVMConfig())
+				gasPool := new(core.GasPool).AddGas(w.current.header.GasLimit)
+				receipt, err := core.GrantProfit(tx, msg, w.chainConfig, w.chain, &w.coinbase, gasPool, s, w.current.header, &w.current.header.GasUsed, *w.chain.GetVMConfig())
 				if err == nil {
 					if nil == payProfit {
 						payProfit = []consensus.GrantProfitRecord{}
@@ -1130,12 +1093,13 @@ func (w *worker) commit(uncles []*types.Header, interval func(), update bool, st
 					txIndex++
 				} else {
 					s.RevertToSnapshot(snap)
+					log.Warn("worker GrantProfit", "err", err)
 				}
 			}
 		}
-		block, err = w.engine.FinalizeAndAssemble(w.chain, w.current.header, s, w.current.txs, uncles, receipts, payProfit, w.gasReward, flowCensus)
+		block, err = w.engine.FinalizeAndAssemble(w.chain, w.current.header, s, w.current.txs, uncles, receipts, payProfit, w.gasReward)
 	} else {
-		block, err = w.engine.FinalizeAndAssemble(w.chain, w.current.header, s, w.current.txs, uncles, receipts, nil, w.gasReward, flowCensus)
+		block, err = w.engine.FinalizeAndAssemble(w.chain, w.current.header, s, w.current.txs, uncles, receipts, nil, w.gasReward)
 	}
 	w.gasReward = big.NewInt(0)
 	if err != nil {
