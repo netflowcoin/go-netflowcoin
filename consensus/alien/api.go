@@ -22,8 +22,10 @@ import (
 	"github.com/seaskycheng/sdvn/common"
 	"github.com/seaskycheng/sdvn/consensus"
 	"github.com/seaskycheng/sdvn/core/types"
+	"github.com/seaskycheng/sdvn/log"
 	"github.com/seaskycheng/sdvn/rpc"
 	"math/big"
+	"sort"
 )
 
 // API is a user facing RPC API to allow controlling the signer and voting
@@ -88,12 +90,15 @@ func (api *API) GetSnapshotByHeaderTime(targetTime uint64, scHash common.Hash) (
 	nextN := new(big.Int).SetInt64(0)
 	isNext := false
 	for {
-	        ceil = new(big.Int).Add(new(big.Int).SetUint64(header.Time), period)
+		ceil = new(big.Int).Add(new(big.Int).SetUint64(header.Time), period)
 		if target.Cmp(new(big.Int).SetUint64(header.Time)) >= 0 && target.Cmp(ceil) < 0 {
 			snap, err := api.alien.snapshot(api.chain, header.Number.Uint64(), header.Hash(), nil, nil, defaultLoopCntRecalculateSigners)
+			if nil != err {
+				return nil, err
+			}
 
 			// replace coinbase by signer settings
-			var scSigners    []*common.Address
+			//var scSigners    []*common.Address
 			//for _, signer := range snap.Signers {
 			//	replaced := false
 			//	if _, ok := snap.SCCoinbase[*signer]; ok {
@@ -106,17 +111,40 @@ func (api *API) GetSnapshotByHeaderTime(targetTime uint64, scHash common.Hash) (
 			//		scSigners = append(scSigners, signer)
 			//	}
 			//}
-			for signer, _ := range snap.SCCoinbase[scHash] {
-				scSigners = append(scSigners, &signer)
-			}
+			//for signer, _ := range snap.SCCoinbase[scHash] {
+			//	scSigners = append(scSigners, &signer)
+			//}
 			mcs := Snapshot{
 				LoopStartTime: snap.LoopStartTime,
 				Period: snap.Period,
-				Signers: scSigners,
+				//Signers: scSigners,
+				Signers: []*common.Address{},
 				Number: snap.Number,
 				SCFULBalance: make(map[common.Address]*big.Int),
 				SCMinerRevenue: make(map[common.Address]common.Address),
 				SCFlowPledge: make(map[common.Address]bool),
+			}
+			loopNumber := snap.Number - snap.Number % api.alien.config.MaxSignerCount
+			loopHeader := api.chain.GetHeaderByNumber(loopNumber)
+			if loopHeader != nil {
+				snap1, err := api.alien.snapshot(api.chain, loopNumber, loopHeader.Hash(), nil, nil, defaultLoopCntRecalculateSigners)
+				if nil == err {
+					var minerSlice MinerSlice
+					for signer, _ := range snap1.SCCoinbase[scHash] {
+						minerSlice = append(minerSlice, signer)
+					}
+					sort.Sort(minerSlice)
+					var signerSlice SignerSlice
+					for i, tallyItem := range minerSlice {
+						signerSlice = append(signerSlice, SignerItem{tallyItem, snap1.HistoryHash[len(snap1.HistoryHash)-1-i]})
+					}
+					sort.Sort(signerSlice)
+					for _, signer := range signerSlice {
+						var scSigner common.Address
+						scSigner.SetBytes(signer.addr.Bytes())
+						mcs.Signers = append(mcs.Signers, &scSigner)
+					}
+				}
 			}
 			for address, item := range snap.FULBalance {
 				balance := new(big.Int).Set(item.Balance)
@@ -143,7 +171,7 @@ func (api *API) GetSnapshotByHeaderTime(targetTime uint64, scHash common.Hash) (
 				mcs.SCNoticeMap = make(map[common.Hash]*CCNotice)
 				mcs.SCNoticeMap[scHash] = snap.SCNoticeMap[scHash]
 			}
-			return &mcs, err
+			return &mcs, nil
 		} else {
 			if minNext := new(big.Int).Add(minN, big.NewInt(1)); maxN.Cmp(minN) == 0 || maxN.Cmp(minNext) == 0 {
 				if !isNext && maxN.Cmp(minNext) == 0 {

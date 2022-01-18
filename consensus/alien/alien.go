@@ -49,7 +49,7 @@ const (
 	inMemorySnapshots  = 128             // Number of recent vote snapshots to keep in memory
 	inMemorySignatures = 4096            // Number of recent block signatures to keep in memory
 	secondsPerYear     = 365 * 24 * 3600 // Number of seconds for one year
-	checkpointInterval = 360             // About N hours if config.period is N
+	checkpointInterval = 60 //360        // About N hours if config.period is N
 	scUnconfirmLoop    = 3               // First count of Loop not send confirm tx to main chain
 )
 
@@ -61,6 +61,10 @@ var (
 	defaultEpochLength               = uint64(60480)                                          // Default number of blocks after which vote's period of validity, About one week if period is 10
 	defaultBlockPeriod               = uint64(10)                                               // Default minimum difference between two consecutive block's timestamps
 	defaultMaxSignerCount            = uint64(21)                                              //
+	minCndLockBalance                = new(big.Int).Mul(big.NewInt(1e+18), big.NewInt( 5))
+	minFlwLockBalance                = new(big.Int).Mul(big.NewInt(1e+18), big.NewInt( 5))
+	minRwdLockBalance                = new(big.Int).Mul(big.NewInt(1e+18), big.NewInt( 5))
+	minCndPledgeBalance              = new(big.Int).Mul(big.NewInt(1e+18), big.NewInt( 36))
 	minVoterBalance                  = new(big.Int).Mul(big.NewInt(100), big.NewInt(1e+18))
 	extraVanity                      = 32                                                    // Fixed number of extra-data prefix bytes reserved for signer vanity
 	extraSeal                        = 65                                                    // Fixed number of extra-data suffix bytes reserved for signer seal
@@ -78,6 +82,11 @@ var (
 	mcTxDefaultGasLimit              = uint64(3000000)                                       // default limit to build transaction for main chain
 	proposalDeposit                  = new(big.Int).Mul(big.NewInt(1e+18), big.NewInt(1e+4)) // default current proposalDeposit
 	scRentLengthRecommend            = uint64(0)                                             // block number for split each side chain rent fee
+	managerAddressExchRate           = common.HexToAddress("NX239029b5164798c7e3be4b85eb816fadc3f4e0e1") ////TODO seaskycheng
+	managerAddressSystem             = common.HexToAddress("NX239029b5164798c7e3be4b85eb816fadc3f4e0e1") ////TODO seaskycheng
+	managerAddressWdthPnsh           = common.HexToAddress("NX239029b5164798c7e3be4b85eb816fadc3f4e0e1") ////TODO seaskycheng
+	managerAddressFlowReport         = common.HexToAddress("NX239029b5164798c7e3be4b85eb816fadc3f4e0e1") ////TODO seaskycheng
+	managerAddressManager            = common.HexToAddress("NX239029b5164798c7e3be4b85eb816fadc3f4e0e1") ////TODO seaskycheng
 )
 
 // Various error messages to mark blocks invalid. These should be private to
@@ -549,7 +558,10 @@ func (a *Alien) verifySeal(chain consensus.ChainHeaderReader, header *types.Head
 				if number%a.config.MaxSignerCount == 0 {
 					newLoop = true
 				}
-				parentSignerMissing = getSignerMissing(parent.Coinbase, header.Coinbase, parentHeaderExtra, newLoop)
+				realityIndex := parent.Number.Uint64() % a.config.MaxSignerCount
+				parentIndex := (parent.Time - parentHeaderExtra.LoopStartTime) / a.config.Period
+				currentIndex := (header.Time - parentHeaderExtra.LoopStartTime) / a.config.Period
+				parentSignerMissing = getSignerMissing(realityIndex, parentIndex, currentIndex, parent.Coinbase, header.Coinbase, parentHeaderExtra, newLoop)
 			}
 
 			if len(parentSignerMissing) != len(currentHeaderExtra.SignerMissing) {
@@ -826,37 +838,299 @@ func (a *Alien) GrantProfit (chain consensus.ChainHeaderReader, header *types.He
 		}
 	}
 	for address, items := range snap.FlowRevenue {
-		for blockNumber, item := range items {
-			result, amount := paymentPledge (true, item, state, header)
-			if 0 == result {
-				playGrantProfit = append(playGrantProfit, consensus.GrantProfitRecord{
-					Which:           sscEnumRwdLock,
-					MinerAddress:    address,
-					BlockNumber:     blockNumber,
-					Amount:          new(big.Int).Set(amount),
-					RevenueAddress:  item.RevenueAddress,
-					RevenueContract: item.RevenueContract,
-					MultiSignature:  item.MultiSignature,
-				})
-			} else if 1 == result {
-				currentGrantProfit = append(currentGrantProfit, consensus.GrantProfitRecord{
-					Which:           sscEnumRwdLock,
-					MinerAddress:    address,
-					BlockNumber:     blockNumber,
-					Amount:          new(big.Int).Set(amount),
-					RevenueAddress:  item.RevenueAddress,
-					RevenueContract: item.RevenueContract,
-					MultiSignature:  item.MultiSignature,
-				})
+		for blockNumber, item1 := range items.LockBalance {
+			for which, item := range item1 {
+				result, amount := paymentPledge (true, item, state, header)
+				if 0 == result {
+					playGrantProfit = append(playGrantProfit, consensus.GrantProfitRecord{
+						Which:           which,
+						MinerAddress:    address,
+						BlockNumber:     blockNumber,
+						Amount:          new(big.Int).Set(amount),
+						RevenueAddress:  item.RevenueAddress,
+						RevenueContract: item.RevenueContract,
+						MultiSignature:  item.MultiSignature,
+					})
+				} else if 1 == result {
+					currentGrantProfit = append(currentGrantProfit, consensus.GrantProfitRecord{
+						Which:           which,
+						MinerAddress:    address,
+						BlockNumber:     blockNumber,
+						Amount:          new(big.Int).Set(amount),
+						RevenueAddress:  item.RevenueAddress,
+						RevenueContract: item.RevenueContract,
+						MultiSignature:  item.MultiSignature,
+					})
+				}
 			}
 		}
 	}
 	return currentGrantProfit, playGrantProfit
 }
 
+type CandidatePunishRecord1 struct {
+	Amount *big.Int
+	Credit uint32
+}
+
+func (a *Alien) checkSnapshotData (block *types.Block, currentHeaderExtra *HeaderExtra) error {
+	origHeaderExtra := HeaderExtra{}
+	header := block.Header()
+	if err := decodeHeaderExtra(a.config, header.Number, header.Extra[extraVanity:len(header.Extra)-extraSeal], &origHeaderExtra); err != nil {
+		return err
+	}
+	if origHeaderExtra.ConfigExchRate != currentHeaderExtra.ConfigExchRate {
+		return errors.New("ConfigExchRate is difference")
+	}
+	if 0 != origHeaderExtra.FlowHarvest.Cmp(currentHeaderExtra.FlowHarvest) {
+		return errors.New("FlowHarvest is difference")
+	}
+	for _, item1 := range origHeaderExtra.ConfigDeposit {
+		found := false
+		for _, item2 := range currentHeaderExtra.ConfigDeposit {
+			if item1.Who == item2.Who &&
+				0 == item1.Amount.Cmp(item2.Amount) {
+				found = true
+				break
+			}
+		}
+		if !found {
+			return errors.New("ConfigDeposit is difference")
+		}
+	}
+	for _, item1 := range origHeaderExtra.LockParameters {
+		found := false
+		for _, item2 := range currentHeaderExtra.LockParameters {
+			if item1.Who == item2.Who &&
+				item1.Interval == item2.Interval &&
+				item1.RlsPeriod == item2.RlsPeriod &&
+				item1.LockPeriod == item2.LockPeriod {
+				found = true
+				break
+			}
+		}
+		if !found {
+			return errors.New("LockParameters is difference")
+		}
+	}
+	for _, item1 := range origHeaderExtra.ManagerAddress {
+		found := false
+		for _, item2 := range currentHeaderExtra.ManagerAddress {
+			if item1.Who == item2.Who &&
+				item1.Target.String() == item2.Target.String() {
+				found = true
+				break
+			}
+		}
+		if !found {
+			return errors.New("ManagerAddress is difference")
+		}
+	}
+	exchangeNFC := make(map[common.Address]*big.Int)
+	for _, item := range origHeaderExtra.ExchangeNFC {
+		if _, ok := exchangeNFC[item.Target]; !ok {
+			exchangeNFC[item.Target] = new(big.Int).Set(item.Amount)
+		} else {
+			exchangeNFC[item.Target] = new(big.Int).Add(exchangeNFC[item.Target], item.Amount)
+		}
+	}
+	for _, item := range currentHeaderExtra.ExchangeNFC {
+		if _, ok := exchangeNFC[item.Target]; !ok {
+			return errors.New("ExchangeNFC is difference")
+		}
+		exchangeNFC[item.Target] = new(big.Int).Sub(exchangeNFC[item.Target], item.Amount)
+		if 0 == exchangeNFC[item.Target].Cmp(big.NewInt(0)) {
+			delete(exchangeNFC, item.Target)
+		}
+	}
+	if 0 != len(exchangeNFC) {
+		return errors.New("ExchangeNFC is difference")
+	}
+	deviceBind := make(map[common.Address]DeviceBindRecord)
+	for _, item := range currentHeaderExtra.DeviceBind {
+		deviceBind[item.Device] = item
+	}
+	for _, item := range origHeaderExtra.DeviceBind {
+		if _, ok := deviceBind[item.Device]; !ok ||
+			deviceBind[item.Device].Bind != item.Bind ||
+			deviceBind[item.Device].Type != item.Type ||
+			deviceBind[item.Device].Revenue.String() != item.Revenue.String() ||
+			deviceBind[item.Device].MultiSign.String() != item.MultiSign.String() ||
+			deviceBind[item.Device].Contract.String() != item.Contract.String() {
+			return errors.New("DeviceBind is difference")
+		}
+	}
+	candidatePledge := make(map[common.Address]*big.Int)
+	for _, item := range origHeaderExtra.CandidatePledge {
+		if _, ok := candidatePledge[item.Target]; !ok {
+			candidatePledge[item.Target] = new(big.Int).Set(item.Amount)
+		} else {
+			candidatePledge[item.Target] = new(big.Int).Add(candidatePledge[item.Target], item.Amount)
+		}
+	}
+	for _, item := range currentHeaderExtra.CandidatePledge {
+		if _, ok := candidatePledge[item.Target]; !ok {
+			return errors.New("CandidatePledge is difference")
+		}
+		candidatePledge[item.Target] = new(big.Int).Sub(candidatePledge[item.Target], item.Amount)
+		if 0 == candidatePledge[item.Target].Cmp(big.NewInt(0)) {
+			delete(candidatePledge, item.Target)
+		}
+	}
+	if 0 != len(candidatePledge) {
+		return errors.New("CandidatePledge is difference")
+	}
+	candidateExit := make(map[common.Address]bool)
+	for _, item := range currentHeaderExtra.CandidateExit {
+		candidateExit[item] = true
+	}
+	for _, item := range origHeaderExtra.CandidateExit {
+		if _, ok := candidateExit[item]; !ok {
+			return errors.New("CandidateExit is difference")
+		}
+	}
+	candidatePunish := make(map[common.Address]*CandidatePunishRecord1)
+	for _, item := range origHeaderExtra.CandidatePunish {
+		if _, ok := candidatePunish[item.Target]; !ok {
+			candidatePunish[item.Target] = &CandidatePunishRecord1{
+				Amount: new(big.Int).Set(item.Amount),
+				Credit: item.Credit,
+			}
+		} else {
+			candidatePunish[item.Target].Amount = new(big.Int).Add(candidatePunish[item.Target].Amount, item.Amount)
+			candidatePunish[item.Target].Credit += item.Credit
+		}
+	}
+	for _, item := range currentHeaderExtra.CandidatePunish {
+		if _, ok := candidatePunish[item.Target]; !ok {
+			return errors.New("CandidatePunish is difference")
+		}
+		candidatePunish[item.Target].Amount = new(big.Int).Sub(candidatePunish[item.Target].Amount, item.Amount)
+		candidatePunish[item.Target].Credit -= item.Credit
+		if 0 == candidatePunish[item.Target].Amount.Cmp(big.NewInt(0)) && 0 == candidatePunish[item.Target].Credit {
+			delete(candidatePunish, item.Target)
+		}
+	}
+	if 0 != len(candidatePunish) {
+		return errors.New("CandidatePunish is difference")
+	}
+	claimedBandwidth := make(map[common.Address]*CandidatePunishRecord1)
+	for _, item := range origHeaderExtra.ClaimedBandwidth {
+		if _, ok := claimedBandwidth[item.Target]; !ok {
+			claimedBandwidth[item.Target] = &CandidatePunishRecord1{
+				Amount: new(big.Int).Set(item.Amount),
+				Credit: item.Bandwidth,
+			}
+		} else {
+			claimedBandwidth[item.Target].Amount = new(big.Int).Add(claimedBandwidth[item.Target].Amount, item.Amount)
+			claimedBandwidth[item.Target].Credit += item.Bandwidth
+		}
+	}
+	for _, item := range currentHeaderExtra.ClaimedBandwidth {
+		if _, ok := claimedBandwidth[item.Target]; !ok {
+			return errors.New("ClaimedBandwidth is difference")
+		}
+		claimedBandwidth[item.Target].Amount = new(big.Int).Sub(claimedBandwidth[item.Target].Amount, item.Amount)
+		claimedBandwidth[item.Target].Credit -= item.Bandwidth
+		if 0 == claimedBandwidth[item.Target].Amount.Cmp(big.NewInt(0)) && 0 == claimedBandwidth[item.Target].Credit {
+			delete(claimedBandwidth, item.Target)
+		}
+	}
+	if 0 != len(claimedBandwidth) {
+		return errors.New("ClaimedBandwidth is difference")
+	}
+	minerExit := make(map[common.Address]bool)
+	for _, item := range currentHeaderExtra.FlowMinerExit {
+		minerExit[item] = true
+	}
+	for _, item := range origHeaderExtra.FlowMinerExit {
+		if _, ok := minerExit[item]; !ok {
+			return errors.New("FlowMinerExit is difference")
+		}
+	}
+	bandwidthPunish := make(map[common.Address]uint32)
+	for _, item := range currentHeaderExtra.BandwidthPunish {
+		bandwidthPunish[item.Target] = item.WdthPnsh
+	}
+	for _, item := range origHeaderExtra.BandwidthPunish {
+		if _, ok := bandwidthPunish[item.Target]; !ok ||
+			bandwidthPunish[item.Target] != item.WdthPnsh {
+			return errors.New("BandwidthPunish is difference")
+		}
+	}
+	var lockReward map[common.Address]map[uint32]*big.Int
+	for _, item := range origHeaderExtra.LockReward {
+		if _, ok := lockReward[item.Target]; !ok {
+			lockReward[item.Target] = make(map[uint32]*big.Int)
+		}
+		if _, ok := lockReward[item.Target][item.IsReward]; !ok {
+			lockReward[item.Target][item.IsReward] = new(big.Int).Set(item.Amount)
+		} else {
+			lockReward[item.Target][item.IsReward] = new(big.Int).Add(lockReward[item.Target][item.IsReward], item.Amount)
+		}
+	}
+	for _, item := range currentHeaderExtra.LockReward {
+		if _, ok := lockReward[item.Target]; !ok {
+			return errors.New("LockReward is difference")
+		}
+		if _, ok := lockReward[item.Target][item.IsReward]; !ok {
+			return errors.New("LockReward is difference")
+		}
+		lockReward[item.Target][item.IsReward] = new(big.Int).Sub(lockReward[item.Target][item.IsReward], item.Amount)
+		if 0 == lockReward[item.Target][item.IsReward].Cmp(big.NewInt(0)) {
+			delete(lockReward[item.Target], item.IsReward)
+			if 0 == len(lockReward[item.Target]) {
+				delete(lockReward, item.Target)
+			}
+		}
+	}
+	if 0 != len(lockReward) {
+		return errors.New("LockReward is difference")
+	}
+	grantProfit := make(map[uint32]map[common.Address]map[uint64]*big.Int)
+	for _, item := range origHeaderExtra.GrantProfit {
+		if _, ok := grantProfit[item.Which]; !ok {
+			grantProfit[item.Which] = make(map[common.Address]map[uint64]*big.Int)
+		}
+		if _, ok := grantProfit[item.Which][item.MinerAddress]; !ok {
+			grantProfit[item.Which][item.MinerAddress] = make(map[uint64]*big.Int)
+		}
+		if _, ok := grantProfit[item.Which][item.MinerAddress][item.BlockNumber]; !ok {
+			grantProfit[item.Which][item.MinerAddress][item.BlockNumber] = new(big.Int).Set(item.Amount)
+		} else {
+			grantProfit[item.Which][item.MinerAddress][item.BlockNumber] = new(big.Int).Add(grantProfit[item.Which][item.MinerAddress][item.BlockNumber], item.Amount)
+		}
+	}
+	for _, item := range currentHeaderExtra.GrantProfit {
+		if _, ok := grantProfit[item.Which]; !ok {
+			return errors.New("GrantProfit is difference")
+		}
+		if _, ok := grantProfit[item.Which][item.MinerAddress]; !ok {
+			return errors.New("GrantProfit is difference")
+		}
+		if _, ok := grantProfit[item.Which][item.MinerAddress][item.BlockNumber]; !ok {
+			return errors.New("GrantProfit is difference")
+		}
+		grantProfit[item.Which][item.MinerAddress][item.BlockNumber] = new(big.Int).Sub(grantProfit[item.Which][item.MinerAddress][item.BlockNumber], item.Amount)
+		if 0 == grantProfit[item.Which][item.MinerAddress][item.BlockNumber].Cmp(big.NewInt(0)) {
+			delete(grantProfit[item.Which][item.MinerAddress], item.BlockNumber)
+			if 0 == len(grantProfit[item.Which][item.MinerAddress]) {
+				delete(grantProfit[item.Which], item.MinerAddress)
+				if 0 == len(grantProfit[item.Which]) {
+					delete(grantProfit, item.Which)
+				}
+			}
+		}
+	}
+	if 0 != len(lockReward) {
+		return errors.New("GrantProfit is difference")
+	}
+	return nil
+}
+
 // Finalize implements consensus.Engine, ensuring no uncles are set, nor block
 // rewards given.
-func (a *Alien) Finalize(chain consensus.ChainHeaderReader, header *types.Header, state *state.StateDB, txs []*types.Transaction, uncles []*types.Header, receipts []*types.Receipt, grantProfit []consensus.GrantProfitRecord, gasReward *big.Int) {
+func (a *Alien) Finalize(chain consensus.ChainHeaderReader, header *types.Header, state *state.StateDB, txs []*types.Transaction, uncles []*types.Header, receipts []*types.Receipt, grantProfit []consensus.GrantProfitRecord, gasReward *big.Int, block *types.Block) error {
 	number := header.Number.Uint64()
 
 	// Mix digest is reserved for now, set to empty
@@ -865,7 +1139,7 @@ func (a *Alien) Finalize(chain consensus.ChainHeaderReader, header *types.Header
 	// Ensure the timestamp has the correct delay
 	parent := chain.GetHeader(header.ParentHash, number-1)
 	if parent == nil {
-		return
+		return consensus.ErrUnknownAncestor
 	}
 	header.Time = parent.Time + a.config.Period
 	if int64(header.Time) < time.Now().Unix() {
@@ -901,7 +1175,7 @@ func (a *Alien) Finalize(chain consensus.ChainHeaderReader, header *types.Header
 		err := decodeHeaderExtra(a.config, parent.Number, parent.Extra[extraVanity:len(parent.Extra)-extraSeal], &parentHeaderExtra)
 		if err != nil {
 			log.Info("Fail to decode parent header", "err", err)
-			return
+			return err
 		}
 		currentHeaderExtra.ConfirmedBlockNumber = parentHeaderExtra.ConfirmedBlockNumber
 		currentHeaderExtra.SignerQueue = parentHeaderExtra.SignerQueue
@@ -912,12 +1186,12 @@ func (a *Alien) Finalize(chain consensus.ChainHeaderReader, header *types.Header
 			if number%a.config.MaxSignerCount == 1 {
 				grandParent := chain.GetHeader(parent.ParentHash, number-2)
 				if grandParent == nil {
-					return
+					return errLastLoopHeaderFail
 				}
 				err := decodeHeaderExtra(a.config, grandParent.Number, grandParent.Extra[extraVanity:len(grandParent.Extra)-extraSeal], &grandParentHeaderExtra)
 				if err != nil {
 					log.Info("Fail to decode parent header", "err", err)
-					return
+					return err
 				}
 			}
 			currentHeaderExtra.SignerMissing = getSignerMissingTrantor(parent.Coinbase, header.Coinbase, &parentHeaderExtra, &grandParentHeaderExtra)
@@ -926,7 +1200,10 @@ func (a *Alien) Finalize(chain consensus.ChainHeaderReader, header *types.Header
 			if number%a.config.MaxSignerCount == 0 {
 				newLoop = true
 			}
-			currentHeaderExtra.SignerMissing = getSignerMissing(parent.Coinbase, header.Coinbase, parentHeaderExtra, newLoop)
+			realityIndex := parent.Number.Uint64() % a.config.MaxSignerCount
+			parentIndex := (parent.Time - parentHeaderExtra.LoopStartTime) / a.config.Period
+			currentIndex := (header.Time - parentHeaderExtra.LoopStartTime) / a.config.Period
+			currentHeaderExtra.SignerMissing = getSignerMissing(realityIndex, parentIndex, currentIndex, parent.Coinbase, header.Coinbase, parentHeaderExtra, newLoop)
 		}
 
 	}
@@ -934,13 +1211,13 @@ func (a *Alien) Finalize(chain consensus.ChainHeaderReader, header *types.Header
 	// Assemble the voting snapshot to check which votes make sense
 	snap, err := a.snapshot(chain, number-1, header.ParentHash, nil, genesisVotes, defaultLoopCntRecalculateSigners)
 	if err != nil {
-		return
+		return err
 	}
 	if !chain.Config().Alien.SideChain {
 		// calculate votes write into header.extra
 		mcCurrentHeaderExtra, refundGas, err := a.processCustomTx(currentHeaderExtra, chain, header, state, txs, receipts)
 		if err != nil {
-			return
+			return err
 		}
 		currentHeaderExtra = mcCurrentHeaderExtra
 		currentHeaderExtra.ConfirmedBlockNumber = snap.getLastConfirmedBlockNumber(currentHeaderExtra.CurrentBlockConfirmations).Uint64()
@@ -961,7 +1238,7 @@ func (a *Alien) Finalize(chain consensus.ChainHeaderReader, header *types.Header
 			currentHeaderExtra.SignerQueue = []common.Address{}
 			newSignerQueue, err := snap1.createSignerQueue()
 			if err != nil {
-				return
+				return err
 			}
 			currentHeaderExtra.SignerQueue = newSignerQueue
 		}
@@ -982,7 +1259,14 @@ func (a *Alien) Finalize(chain consensus.ChainHeaderReader, header *types.Header
 			currentHeaderExtra.LockReward = accumulateBandwidthRewards (currentHeaderExtra.LockReward, chain.Config(), header, snap)
 		}
 		// Accumulate any block rewards and commit the final state root
-		accumulateRewards(chain.Config(), state, header, snap, refundGas, gasReward)
+		currentHeaderExtra.LockReward = accumulateRewards(currentHeaderExtra.LockReward, chain.Config(), state, header, snap, refundGas, gasReward)
+
+		if nil != block {
+			err = a.checkSnapshotData (block, &currentHeaderExtra)
+			if nil != err {
+				return err
+			}
+		}
 	} else {
 		// use currentHeaderExtra.SignerQueue as signer queue
 		currentHeaderExtra.SignerQueue = append([]common.Address{header.Coinbase}, parentHeaderExtra.SignerQueue...)
@@ -994,17 +1278,22 @@ func (a *Alien) Finalize(chain consensus.ChainHeaderReader, header *types.Header
 	// encode header.extra
 	currentHeaderExtraEnc, err := encodeHeaderExtra(a.config, header.Number, currentHeaderExtra)
 	if err != nil {
-		return
+		return err
 	}
 
 	header.Extra = append(header.Extra, currentHeaderExtraEnc...)
 	header.Extra = append(header.Extra, make([]byte, extraSeal)...)
 
 	header.Root = state.IntermediateRoot(chain.Config().IsEIP158(header.Number))
+
+	return nil
 }
 
 func (a *Alien) FinalizeAndAssemble(chain consensus.ChainHeaderReader, header *types.Header, state *state.StateDB, txs []*types.Transaction, uncles []*types.Header, receipts []*types.Receipt, grantProfit []consensus.GrantProfitRecord, gasReward *big.Int) (*types.Block, error) {
-	a.Finalize(chain, header, state, txs, uncles, receipts, grantProfit, gasReward)
+	err := a.Finalize(chain, header, state, txs, uncles, receipts, grantProfit, gasReward, nil)
+	if nil != err {
+		return nil, err
+	}
 	// Assemble and return the final block for sealing
 	return types.NewBlock(header, txs, nil, receipts, trie.NewStackTrie(nil)), nil
 }
@@ -1251,11 +1540,11 @@ func paymentPledge (hasContract bool, pledge *PledgeItem, state *state.StateDB, 
 	}
 	amount := big.NewInt(0)
 	if 0 == pledge.RlsPeriod || 0 == pledge.Interval || 0 <= header.Number.Cmp(new(big.Int).Add(lockExpire, big.NewInt(int64(pledge.RlsPeriod)))) {
-		amount = new(big.Int).Sub(new(big.Int).Add(pledge.Amount, pledge.Reward), pledge.Playment)
+		amount = new(big.Int).Sub(pledge.Amount, pledge.Playment)
 	} else {
 		currentPeriod := new(big.Int).Div(new(big.Int).Sub(header.Number, lockExpire), big.NewInt(int64(pledge.Interval)))
 		totalPeriod := (pledge.RlsPeriod + pledge.Interval - 1) / pledge.Interval
-		totalPlayment := new(big.Int).Div(new(big.Int).Mul(new(big.Int).Add(pledge.Amount, pledge.Reward), currentPeriod), big.NewInt(int64(totalPeriod)))
+		totalPlayment := new(big.Int).Div(new(big.Int).Mul(pledge.Amount, currentPeriod), big.NewInt(int64(totalPeriod)))
 		amount = new(big.Int).Sub(totalPlayment, pledge.Playment)
 	}
 	nilHash := common.Address{}
@@ -1311,7 +1600,7 @@ func accumulateBandwidthRewards(currentLockReward []LockRewardRecord, config *pa
 		currentLockReward = append(currentLockReward, LockRewardRecord{
 			Target: minerAddress,
 			Amount: new(big.Int).Set(reward),
-			IsReward: true,
+			IsReward: sscEnumRwdLock,
 		})
 	}
 	return currentLockReward
@@ -1374,7 +1663,7 @@ func accumulateFlowRewards(currentLockReward []LockRewardRecord, snap *Snapshot)
 			currentLockReward = append(currentLockReward, LockRewardRecord{
 				Target: minerAddress,
 				Amount: new(big.Int).Set(reward),
-				IsReward: false,
+				IsReward: sscEnumFlwLock,
 			})
 		}
 	}
@@ -1382,7 +1671,7 @@ func accumulateFlowRewards(currentLockReward []LockRewardRecord, snap *Snapshot)
 }
 
 // AccumulateRewards credits the coinbase of the given block with the mining reward.
-func accumulateRewards(config *params.ChainConfig, state *state.StateDB, header *types.Header, snap *Snapshot, refundGas RefundGas, gasReward *big.Int) {
+func accumulateRewards(currentLockReward []LockRewardRecord, config *params.ChainConfig, state *state.StateDB, header *types.Header, snap *Snapshot, refundGas RefundGas, gasReward *big.Int) []LockRewardRecord {
 	// Calculate the block reword by year
 	blockNumPerYear := secondsPerYear / config.Alien.Period
 	yearCount := header.Number.Uint64() / blockNumPerYear
@@ -1412,26 +1701,39 @@ func accumulateRewards(config *params.ChainConfig, state *state.StateDB, header 
 	// rewards for the miner, check minerReward value for refund gas
 	balance := state.GetBalance(header.Coinbase)
 	if nil == gasReward {
-		paymentReward (header.Coinbase, minerReward, state, snap)
+		currentLockReward = append(currentLockReward, LockRewardRecord{
+			Target: header.Coinbase,
+			Amount: new(big.Int).Set(minerReward),
+			IsReward: sscEnumCndLock,
+		})
 	} else if 0 < balance.Cmp(gasReward) {
 		state.SubBalance(header.Coinbase, gasReward)
 		minerReward = new(big.Int).Add(minerReward, gasReward)
-		paymentReward (header.Coinbase, minerReward, state, snap)
+		currentLockReward = append(currentLockReward, LockRewardRecord{
+			Target: header.Coinbase,
+			Amount: new(big.Int).Set(minerReward),
+			IsReward: sscEnumCndLock,
+		})
 	} else {
 		state.SubBalance(header.Coinbase, balance)
 		gasReward = new(big.Int).Sub(gasReward, balance)
 		if 0 < minerReward.Cmp(gasReward) {
 			minerReward = new(big.Int).Sub(minerReward, gasReward)
-			paymentReward (header.Coinbase, minerReward, state, snap)
+			currentLockReward = append(currentLockReward, LockRewardRecord{
+				Target: header.Coinbase,
+				Amount: new(big.Int).Set(minerReward),
+				IsReward: sscEnumCndLock,
+			})
 		}
 	}
+	return currentLockReward
 }
 
 // Get the signer missing from last signer till header.Coinbase
-func getSignerMissing(lastSigner common.Address, currentSigner common.Address, extra HeaderExtra, newLoop bool) []common.Address {
+func getSignerMissing(realityIndex uint64, parentIndex uint64, currentIndex uint64, lastSigner common.Address, currentSigner common.Address, extra HeaderExtra, newLoop bool) []common.Address {
 
 	var signerMissing []common.Address
-
+/*
 	if newLoop {
 		for i, qlen := 0, len(extra.SignerQueue); i < len(extra.SignerQueue); i++ {
 			if lastSigner == extra.SignerQueue[qlen-1-i] {
@@ -1456,7 +1758,16 @@ func getSignerMissing(lastSigner common.Address, currentSigner common.Address, e
 		}
 
 	}
-
+*/
+    if newLoop {
+		for i := 0; i < len(extra.SignerQueue) - int(realityIndex) - 1; i++ {
+			signerMissing = append(signerMissing, extra.SignerQueue[(int(parentIndex + 1) + i) % len(extra.SignerQueue)])
+		}
+	} else {
+		for i := int(parentIndex) + 1; i < int(currentIndex); i++ {
+			signerMissing = append(signerMissing, extra.SignerQueue[i % len(extra.SignerQueue)])
+		}
+	}
 	return signerMissing
 }
 

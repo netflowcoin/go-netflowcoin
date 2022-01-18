@@ -98,6 +98,7 @@ func (tx *AccessListTx) txType() byte           { return AccessListTxType }
 func (tx *AccessListTx) chainID() *big.Int      { return tx.ChainID }
 func (tx *AccessListTx) protected() bool        { return true }
 func (tx *AccessListTx) accessList() AccessList { return tx.AccessList }
+func (tx *AccessListTx) signerList() SignerList { return nil }
 func (tx *AccessListTx) data() []byte           { return tx.Data }
 func (tx *AccessListTx) gas() uint64            { return tx.Gas }
 func (tx *AccessListTx) gasPrice() *big.Int     { return tx.GasPrice }
@@ -113,4 +114,20 @@ func (tx *AccessListTx) rawSignatureValues() (v, r, s *big.Int) {
 
 func (tx *AccessListTx) setSignatureValues(chainID, v, r, s *big.Int) {
 	tx.ChainID, tx.V, tx.R, tx.S = chainID, v, r, s
+}
+
+func (tx *AccessListTx) getAllSigners() []common.Address {
+	var allSigners []common.Address
+	if nil == tx.V || nil == tx.R || nil == tx.S {
+		return nil
+	}
+	signer := LatestSignerForChainID(tx.ChainID)
+	trans := NewTx(tx)
+	initiatorSinger, err := signer.Sender(trans)
+	if nil != err {
+		return nil
+	}
+
+	allSigners = append(allSigners, initiatorSinger)
+	return allSigners
 }

@@ -5372,6 +5372,13 @@ var methods = function () {
         outputFormatter: utils.toDecimal
     });
 
+    var isMultiSignatureAddress = new Method({
+        name: 'isMultiSignatureAddress',
+        call: 'eth_isMultiSignatureAddress',
+        params: 1,
+        inputFormatter: [formatters.inputAddressFormatter]
+    });
+
     var sendRawTransaction = new Method({
         name: 'sendRawTransaction',
         call: 'eth_sendRawTransaction',
@@ -5458,6 +5465,7 @@ var methods = function () {
         getTransactionFromBlock,
         getTransactionReceipt,
         getTransactionCount,
+        isMultiSignatureAddress,
         call,
         estimateGas,
         sendRawTransaction,

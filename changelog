@@ -1,3 +1,9 @@
+20220119 seaskycheng v0.5.4
+         add multi signer
+         add snopshot check
+         fix gas unlock
+         fix nfc exchange show
+         fix side chain signer
 20211119 seaskycheng v0.5.3
          fix reward unlock to contract
 20211110 seaskycheng V0.5.2

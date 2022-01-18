@@ -26,6 +26,14 @@ import (
 	"github.com/seaskycheng/sdvn/common"
 )
 
+type MinerSlice []common.Address
+
+func (s MinerSlice) Len() int      { return len(s) }
+func (s MinerSlice) Swap(i, j int) { s[i], s[j] = s[j], s[i] }
+func (s MinerSlice) Less(i, j int) bool {
+	return bytes.Compare(s[i].Bytes(), s[j].Bytes()) > 0
+}
+
 type TallyItem struct {
 	addr  common.Address
 	stake *big.Int

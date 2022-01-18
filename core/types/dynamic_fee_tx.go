@@ -86,6 +86,7 @@ func (tx *DynamicFeeTx) txType() byte           { return DynamicFeeTxType }
 func (tx *DynamicFeeTx) chainID() *big.Int      { return tx.ChainID }
 func (tx *DynamicFeeTx) protected() bool        { return true }
 func (tx *DynamicFeeTx) accessList() AccessList { return tx.AccessList }
+func (tx *DynamicFeeTx) signerList() SignerList { return nil }
 func (tx *DynamicFeeTx) data() []byte           { return tx.Data }
 func (tx *DynamicFeeTx) gas() uint64            { return tx.Gas }
 func (tx *DynamicFeeTx) gasFeeCap() *big.Int    { return tx.GasFeeCap }
@@ -101,4 +102,20 @@ func (tx *DynamicFeeTx) rawSignatureValues() (v, r, s *big.Int) {
 
 func (tx *DynamicFeeTx) setSignatureValues(chainID, v, r, s *big.Int) {
 	tx.ChainID, tx.V, tx.R, tx.S = chainID, v, r, s
+}
+
+func (tx *DynamicFeeTx) getAllSigners() []common.Address {
+	var allSigners []common.Address
+	if nil == tx.V || nil == tx.R || nil == tx.S {
+		return nil
+	}
+	signer := LatestSignerForChainID(tx.ChainID)
+	trans := NewTx(tx)
+	initiatorSinger, err := signer.Sender(trans)
+	if nil != err {
+		return nil
+	}
+
+	allSigners = append(allSigners, initiatorSinger)
+	return allSigners
 }

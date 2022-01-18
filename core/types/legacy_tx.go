@@ -94,6 +94,7 @@ func (tx *LegacyTx) copy() TxData {
 func (tx *LegacyTx) txType() byte           { return LegacyTxType }
 func (tx *LegacyTx) chainID() *big.Int      { return deriveChainId(tx.V) }
 func (tx *LegacyTx) accessList() AccessList { return nil }
+func (tx *LegacyTx) signerList() SignerList { return nil }
 func (tx *LegacyTx) data() []byte           { return tx.Data }
 func (tx *LegacyTx) gas() uint64            { return tx.Gas }
 func (tx *LegacyTx) gasPrice() *big.Int     { return tx.GasPrice }
@@ -109,4 +110,20 @@ func (tx *LegacyTx) rawSignatureValues() (v, r, s *big.Int) {
 
 func (tx *LegacyTx) setSignatureValues(chainID, v, r, s *big.Int) {
 	tx.V, tx.R, tx.S = v, r, s
+}
+
+func (tx *LegacyTx) getAllSigners() []common.Address {
+	var allSigners []common.Address
+	if nil == tx.V || nil == tx.R || nil == tx.S {
+		return nil
+	}
+	signer := LatestSignerForChainID(deriveChainId(tx.V))
+	trans := NewTx(tx)
+	initiatorSinger, err := signer.Sender(trans)
+	if nil != err {
+		return nil
+	}
+
+	allSigners = append(allSigners, initiatorSinger)
+	return allSigners
 }

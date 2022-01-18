@@ -45,6 +45,7 @@ const (
 	LegacyTxType = iota
 	AccessListTxType
 	DynamicFeeTxType
+	MultiSignerTxType
 )
 
 // Transaction is an sdvn transaction.
@@ -73,18 +74,20 @@ type TxData interface {
 	copy() TxData // creates a deep copy and initializes all fields
 
 	chainID() *big.Int
-	accessList() AccessList
-	data() []byte
-	gas() uint64
+	nonce() uint64
 	gasPrice() *big.Int
 	gasTipCap() *big.Int
 	gasFeeCap() *big.Int
-	value() *big.Int
-	nonce() uint64
+	gas() uint64
 	to() *common.Address
+	value() *big.Int
+	data() []byte
+	accessList() AccessList
+	signerList() SignerList
 
 	rawSignatureValues() (v, r, s *big.Int)
 	setSignatureValues(chainID, v, r, s *big.Int)
+	getAllSigners() []common.Address
 }
 
 // EncodeRLP implements rlp.Encoder
@@ -186,6 +189,10 @@ func (tx *Transaction) decodeTyped(b []byte) (TxData, error) {
 		var inner DynamicFeeTx
 		err := rlp.DecodeBytes(b[1:], &inner)
 		return &inner, err
+	case MultiSignerTxType:
+		var inner MultiSignerTx
+		err := rlp.DecodeBytes(b[1:], &inner)
+		return &inner, err
 	default:
 		return nil, ErrTxTypeNotSupported
 	}
@@ -263,6 +270,8 @@ func (tx *Transaction) Data() []byte { return tx.inner.data() }
 // AccessList returns the access list of the transaction.
 func (tx *Transaction) AccessList() AccessList { return tx.inner.accessList() }
 
+func (tx *Transaction) SignerList() SignerList { return tx.inner.signerList() }
+
 // Gas returns the gas limit of the transaction.
 func (tx *Transaction) Gas() uint64 { return tx.inner.gas() }
 
@@ -280,6 +289,8 @@ func (tx *Transaction) Value() *big.Int { return new(big.Int).Set(tx.inner.value
 
 // Nonce returns the sender account nonce of the transaction.
 func (tx *Transaction) Nonce() uint64 { return tx.inner.nonce() }
+
+func (tx *Transaction) AllSigners() []common.Address { return tx.inner.getAllSigners() }
 
 // To returns the recipient address of the transaction.
 // For contract-creation transactions, To returns nil.

@@ -28,13 +28,18 @@ import (
 )
 
 type GrantProfitRecord struct {
-	Which           uint64
+	Which           uint32
 	MinerAddress    common.Address
 	BlockNumber     uint64
 	Amount          *big.Int
 	RevenueAddress  common.Address
 	RevenueContract common.Address
 	MultiSignature  common.Address
+}
+
+type MultiSignatureData struct {
+	Threshold    uint32
+	MultiSigners []common.Address
 }
 
 // ChainHeaderReader defines a small collection of methods needed to access the local
@@ -99,7 +104,7 @@ type Engine interface {
 	// Note: The block header and state database might be updated to reflect any
 	// consensus rules that happen at finalization (e.g. block rewards).
 	Finalize(chain ChainHeaderReader, header *types.Header, state *state.StateDB, txs []*types.Transaction,
-		uncles []*types.Header, receipts []*types.Receipt, grantProfit []GrantProfitRecord, gasReward *big.Int)
+		uncles []*types.Header, receipts []*types.Receipt, grantProfit []GrantProfitRecord, gasReward *big.Int, block *types.Block) error
 
 	// FinalizeAndAssemble runs any post-transaction state modifications (e.g. block
 	// rewards) and assembles the final block.

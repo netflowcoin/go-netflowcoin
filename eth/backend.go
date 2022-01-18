@@ -20,6 +20,7 @@ package eth
 import (
 	"errors"
 	"fmt"
+	"github.com/seaskycheng/sdvn/crypto"
 	"math/big"
 	"runtime"
 	"sync"
@@ -357,6 +358,22 @@ func (s *Ethereum) APIs() []rpc.API {
 
 func (s *Ethereum) ResetWithGenesisBlock(gb *types.Block) {
 	s.blockchain.ResetWithGenesisBlock(gb)
+}
+
+func (s *Ethereum) IsMultiSignatureAddress(address common.Address) bool {
+	state, err := s.blockchain.State()
+	if nil != err || state.Empty(address) {
+		return false
+	}
+	contractHash := state.GetCodeHash(address)
+	if state.GetNonce(address) != 1 || contractHash == (common.Hash{}) || contractHash == crypto.Keccak256Hash(nil) {
+		return false
+	}
+	var parameter consensus.MultiSignatureData
+	if err := rlp.DecodeBytes(state.GetCode(address), &parameter); nil != err {
+		return false
+	}
+	return true
 }
 
 func (s *Ethereum) Etherbase() (eb common.Address, err error) {

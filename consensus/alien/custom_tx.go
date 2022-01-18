@@ -21,6 +21,7 @@ package alien
 import (
 	"fmt"
 	"github.com/seaskycheng/sdvn/common/hexutil"
+	"github.com/seaskycheng/sdvn/crypto"
 	"math/big"
 	"strconv"
 	"strings"
@@ -50,9 +51,11 @@ const (
 	ufoEventDeclare       = "declare"
 	ufoEventSetCoinbase   = "setcb"
 	ufoEventDelCoinbase   = "delcb"
-	ufoEventFlowReport    = "flwrpt"
+	ufoEventFlowReport1   = "flwrpt"
+	ufoEventFlowReport2   = "flwrptm"
 
 	nfcCategoryExch       = "Exch"
+	nfcCategoryMultiSign  = "Multi"
 	nfcCategoryBind       = "Bind"
 	nfcCategoryUnbind     = "Unbind"
 	nfcCategoryRebind     = "Rebind"
@@ -89,16 +92,18 @@ const (
 
 	nfcPosExchAddress     = 3
 	nfcPosExchValue       =	4
-    nfcPosMinerAddress    = 3
+	nfcPosThreshold       = 3
+	nfcPosMinerAddress    = 3
 	nfcPosRevenueType     = 4
 	nfcPosRevenueContract = 5
 	nfcPosMiltiSign       = 6
 	nfcPosRevenueAddress  = 7
-    nfcPosISPQosID        = 4
-    nfcPosBandwidth       = 5
+	nfcPosISPQosID        = 4
+	nfcPosBandwidth       = 5
 
-    sscPosExchRate        = 3
+	sscPosExchRate        = 3
 	sscPosDeposit         = 3
+	sscPosDepositWho      = 4
 	sscPosLockPeriod      = 3
 	sscPosRlsPeriod       = 4
 	sscPosInterval        = 5
@@ -300,7 +305,7 @@ type MinerStakeRecord struct {
 type LockRewardRecord struct {
 	Target   common.Address
 	Amount   *big.Int
-	IsReward bool
+	IsReward uint32
 }
 
 type MinerFlowReportItem struct {
@@ -314,6 +319,11 @@ type MinerFlowReportRecord struct {
 	ChainHash     common.Hash
 	ReportTime    uint64
 	ReportContent []MinerFlowReportItem
+}
+
+type ConfigDepositRecord struct {
+	Who    uint32
+	Amount *big.Int
 }
 
 // HeaderExtra is the struct of info in header.Extra[extraVanity:len(header.extra)-extraSeal]
@@ -344,11 +354,11 @@ type HeaderExtra struct {
 	BandwidthPunish           []BandwidthPunishRecord
 	ConfigExchRate            uint32
 	ConfigOffLine             uint32
-	ConfigDeposit             big.Int
+	ConfigDeposit             []ConfigDepositRecord
 	ConfigISPQOS              []ISPQOSRecord
 	LockParameters            []LockParameterRecord
 	ManagerAddress            []ManagerAddressRecord
-	FlowHarvest               big.Int
+	FlowHarvest               *big.Int
 	LockReward                []LockRewardRecord
 	GrantProfit               []consensus.GrantProfitRecord
 	FlowReport                []MinerFlowReportRecord
@@ -515,16 +525,16 @@ func (a *Alien) processCustomTx(headerExtra HeaderExtra, chain consensus.ChainHe
 										headerExtra.SideChainSetCoinbases = a.processSCEventSetCoinbase(headerExtra.SideChainSetCoinbases,
 											common.HexToHash(txDataInfo[ufoMinSplitLen+1]), txSender, *tx.To(), false)
 									}
-								} else if ufoEventFlowReport == txDataInfo[posEventFlowReport] {
+								} else if ufoEventFlowReport1 == txDataInfo[posEventFlowReport] {
+									ok := false
+									headerExtra.FlowReport, ok = a.processFlowReport1 (headerExtra.FlowReport, txDataInfo, txSender, snap)
+									if ok {
+										refundHash[tx.Hash()] = RefundPair{txSender, tx.GasPrice()}
+									}
+								} else if ufoEventFlowReport2 == txDataInfo[posEventFlowReport] {
 									if txSender.String() == snap.SystemConfig.ManagerAddress[sscEnumFlowReport].String() {
 										headerExtra.FlowReport = a.processFlowReport2 (headerExtra.FlowReport, txDataInfo)
 										refundHash[tx.Hash()] = RefundPair{txSender, tx.GasPrice()}
-									} else {
-										ok := false
-										headerExtra.FlowReport, ok = a.processFlowReport1 (headerExtra.FlowReport, txDataInfo, txSender, snap)
-										if ok {
-											refundHash[tx.Hash()] = RefundPair{txSender, tx.GasPrice()}
-										}
 									}
 								}
 							}
@@ -534,22 +544,24 @@ func (a *Alien) processCustomTx(headerExtra HeaderExtra, chain consensus.ChainHe
 					if txDataInfo[posVersion] == ufoVersion {
 						if txDataInfo[posCategory] == nfcCategoryExch {
 							headerExtra.ExchangeNFC = a.processExchangeNFC (headerExtra.ExchangeNFC, txDataInfo, txSender, tx, receipts, state, snap)
+						} else if txDataInfo[posCategory] == nfcCategoryMultiSign {
+							a.processCreateMultiSignature (txDataInfo, txSender, tx, receipts, state)
 						} else if txDataInfo[posCategory] == nfcCategoryBind {
 							headerExtra.DeviceBind = a.processDeviceBind (headerExtra.DeviceBind, txDataInfo, txSender, tx, receipts, snapCache)
 						} else if txDataInfo[posCategory] == nfcCategoryUnbind {
-							headerExtra.DeviceBind = a.processDeviceUnbind (headerExtra.DeviceBind, txDataInfo, txSender, tx, receipts, snapCache)
+							headerExtra.DeviceBind = a.processDeviceUnbind (headerExtra.DeviceBind, txDataInfo, txSender, tx, receipts, state, snapCache)
 						} else if txDataInfo[posCategory] == nfcCategoryRebind {
-							headerExtra.DeviceBind = a.processDeviceRebind (headerExtra.DeviceBind, txDataInfo, txSender, tx, receipts, snapCache)
+							headerExtra.DeviceBind = a.processDeviceRebind (headerExtra.DeviceBind, txDataInfo, txSender, tx, receipts, state, snapCache)
 						} else if txDataInfo[posCategory] == nfcCategoryCandReq {
 							headerExtra.CandidatePledge = a.processCandidatePledge (headerExtra.CandidatePledge, txDataInfo, txSender, tx, receipts, state, snapCache)
 						} else if txDataInfo[posCategory] == nfcCategoryCandExit {
-							headerExtra.CandidateExit = a.processCandidateExit (headerExtra.CandidateExit, txDataInfo, txSender, tx, receipts, snapCache)
+							headerExtra.CandidateExit = a.processCandidateExit (headerExtra.CandidateExit, txDataInfo, txSender, tx, receipts, state, snapCache)
 						} else if txDataInfo[posCategory] == nfcCategoryCandPnsh {
 							headerExtra.CandidatePunish = a.processCandidatePunish (headerExtra.CandidatePunish, txDataInfo, txSender, tx, receipts, state, snapCache)
 						} else if txDataInfo[posCategory] == nfcCategoryFlwReq {
 							headerExtra.ClaimedBandwidth = a.processMinerPledge (headerExtra.ClaimedBandwidth, txDataInfo, txSender, tx, receipts, state, snapCache)
 						} else if txDataInfo[posCategory] == nfcCategoryFlwExit {
-							headerExtra.FlowMinerExit = a.processMinerExit (headerExtra.FlowMinerExit, txDataInfo, txSender, tx, receipts, snapCache)
+							headerExtra.FlowMinerExit = a.processMinerExit (headerExtra.FlowMinerExit, txDataInfo, txSender, tx, receipts, state, snapCache)
 						}
 					}
 				}  else if txDataInfo[posPrefix] == sscPrefix {
@@ -557,7 +569,7 @@ func (a *Alien) processCustomTx(headerExtra HeaderExtra, chain consensus.ChainHe
 						if txDataInfo[posCategory] == sscCategoryExchRate {
 							headerExtra.ConfigExchRate = a.processExchRate (txDataInfo, txSender, snapCache)
 						} else if txDataInfo[posCategory] == sscCategoryDeposit {
-							headerExtra.ConfigDeposit.Set(a.processCandidateDeposit (txDataInfo, txSender, snapCache))
+							headerExtra.ConfigDeposit = a.processCandidateDeposit (headerExtra.ConfigDeposit, txDataInfo, txSender, snapCache)
 						} else if txDataInfo[posCategory] == sscCategoryCndLock {
 							headerExtra.LockParameters = a.processCndLockConfig (headerExtra.LockParameters, txDataInfo, txSender, snapCache)
 						} else if txDataInfo[posCategory] == sscCategoryFlwLock {
@@ -900,6 +912,105 @@ func (a *Alien) addCustomerTxLog (tx *types.Transaction, receipts []*types.Recei
 	return false
 }
 
+func (a *Alien) verifyMultiSignatureAddress(state *state.StateDB, address common.Address, signers []common.Address) bool {
+	if state.Empty(address) {
+		return false
+	}
+	contractHash := state.GetCodeHash(address)
+	if state.GetNonce(address) != 1 || contractHash == (common.Hash{}) || contractHash == crypto.Keccak256Hash(nil) {
+		return false
+	}
+	var parameter consensus.MultiSignatureData
+	if err := rlp.DecodeBytes(state.GetCode(address), &parameter); nil != err {
+		return false
+	}
+	assistAddress := make(map[common.Address]bool)
+	for _, assist := range parameter.MultiSigners {
+		assistAddress[assist] = true
+	}
+	okNumber := 0
+	okAddress := make(map[common.Address]bool)
+	for _, signer := range signers {
+		if _, ok := okAddress[signer]; !ok {
+			if _, ok = assistAddress[signer]; ok {
+				okNumber++
+				okAddress[signer] = true
+			}
+		}
+	}
+	return okNumber >= int(parameter.Threshold)
+}
+
+func (a *Alien) processCreateMultiSignature (txDataInfo []string, txSender common.Address, tx *types.Transaction, receipts []*types.Receipt, state *state.StateDB) {
+	if len(txDataInfo) <= nfcPosThreshold + 2 {
+		log.Warn("Create Multi-Signature fail", "parameter number", len(txDataInfo))
+		return
+	}
+	parameter := consensus.MultiSignatureData{
+		Threshold: 0,
+		MultiSigners: []common.Address{},
+	}
+	if threshold, err := strconv.ParseUint(txDataInfo[nfcPosThreshold], 10, 32); err == nil {
+		if 2 > threshold || 10 < threshold {
+			log.Warn("Create Multi-Signature", "threshold", txDataInfo[nfcPosThreshold])
+			return
+		} else {
+			if len(txDataInfo) < nfcPosThreshold + 2 + int(threshold) || len(txDataInfo) > nfcPosThreshold + 1000 {
+				log.Warn("Create Multi-Signature fail", "parameter number", len(txDataInfo))
+				return
+			}
+		}
+		parameter.Threshold = uint32(threshold)
+	} else {
+		log.Warn("Create Multi-Signature", "threshold", txDataInfo[nfcPosThreshold])
+		return
+	}
+	signers := make(map[common.Address]bool)
+	i := nfcPosThreshold + 1
+	for i < len(txDataInfo) {
+		var address common.Address
+		if err := address.UnmarshalText1([]byte(txDataInfo[i])); err != nil {
+			log.Warn("Create Multi-Signature", "address", txDataInfo[i])
+			return
+		}
+		i++
+		if _, ok := signers[address]; !ok {
+			signers[address] = true
+			parameter.MultiSigners = append(parameter.MultiSigners, address)
+		}
+	}
+	if len(parameter.MultiSigners) <= int(parameter.Threshold) {
+		log.Warn("Create Multi-Signature fail", "Owner number", len(parameter.MultiSigners), "threshold", parameter.Threshold)
+		return
+	}
+	data, err := rlp.EncodeToBytes(parameter)
+	if nil != err {
+		log.Warn("Create Multi-Signature fail", "err", err)
+		return
+	}
+	if len(data) > params.MaxCodeSize {
+		log.Warn("Create Multi-Signature fail for max code size exceeded")
+		return
+	}
+	snapshot := state.Snapshot()
+	contractAddr := crypto.CreateAddress(txSender, tx.Nonce())
+	state.AddAddressToAccessList(contractAddr)
+	contractHash := state.GetCodeHash(contractAddr)
+	if state.GetNonce(contractAddr) != 0 || (contractHash != (common.Hash{}) && contractHash != crypto.Keccak256Hash(nil)) {
+		state.RevertToSnapshot(snapshot)
+		log.Warn("Create Multi-Signature fail", "err", err)
+		return
+	}
+	state.CreateAccount(contractAddr)
+	state.SetNonce(contractAddr, 1)
+	state.SetCode(contractAddr, data)
+	topics := make([]common.Hash, 3)
+	topics[0].UnmarshalText([]byte("0x19e4c26736d9757bc4f6391599c8c577e3ce9de291219ff3f84242af8b6c6d59")) //web3.sha3("CreateMultiSignature(uint256,address[])")
+	topics[1].SetBytes(txSender.Bytes())
+	topics[2].SetBytes(big.NewInt(int64(tx.Nonce())).Bytes())
+	a.addCustomerTxLog (tx, receipts, topics, contractAddr.Hash().Bytes())
+}
+
 func (a *Alien) processExchangeNFC (currentExchangeNFC []ExchangeNFCRecord, txDataInfo []string, txSender common.Address, tx *types.Transaction, receipts []*types.Receipt, state *state.StateDB, snap *Snapshot) []ExchangeNFCRecord {
 	if len(txDataInfo) <= nfcPosExchValue {
 		log.Warn("Exchange NFC to FUL fail", "parameter number", len(txDataInfo))
@@ -974,13 +1085,17 @@ func (a *Alien) processDeviceBind (currentDeviceBind []DeviceBindRecord, txDataI
 		log.Warn("Device bind revenue", "type", txDataInfo[nfcPosRevenueType])
 		return currentDeviceBind
 	}
-	if err := deviceBind.Contract.UnmarshalText1([]byte(txDataInfo[nfcPosRevenueContract])); err != nil {
-		log.Warn("Device bind revenue", "contract address", txDataInfo[nfcPosRevenueContract])
-		return currentDeviceBind
+	if 0 < len(txDataInfo[nfcPosRevenueContract]) {
+		if err := deviceBind.Contract.UnmarshalText1([]byte(txDataInfo[nfcPosRevenueContract])); err != nil {
+			log.Warn("Device bind revenue", "contract address", txDataInfo[nfcPosRevenueContract])
+			return currentDeviceBind
+		}
 	}
-	if err := deviceBind.MultiSign.UnmarshalText1([]byte(txDataInfo[nfcPosMiltiSign])); err != nil {
-		log.Warn("Device bind revenue", "milti-signature address", txDataInfo[nfcPosRevenueContract])
-		return currentDeviceBind
+	if 0 < len(txDataInfo[nfcPosMiltiSign]) {
+		if err := deviceBind.MultiSign.UnmarshalText1([]byte(txDataInfo[nfcPosMiltiSign])); err != nil {
+			log.Warn("Device bind revenue", "milti-signature address", txDataInfo[nfcPosRevenueContract])
+			return currentDeviceBind
+		}
 	}
 	topics := make([]common.Hash, 3)
 	topics[0].UnmarshalText([]byte("0xf061654231b0035280bd8dd06084a38aa871445d0b7311be8cc2605c5672a6e3")) //web3.sha3("DeviceBind(uint32,byte32,byte32,address)")
@@ -1012,11 +1127,13 @@ func (a *Alien) processDeviceBind (currentDeviceBind []DeviceBindRecord, txDataI
 	return currentDeviceBind
 }
 
-func (a *Alien) processDeviceUnbind (currentDeviceBind []DeviceBindRecord, txDataInfo []string, txSender common.Address, tx *types.Transaction, receipts []*types.Receipt, snap *Snapshot) []DeviceBindRecord {
+func (a *Alien) processDeviceUnbind (currentDeviceBind []DeviceBindRecord, txDataInfo []string, txSender common.Address, tx *types.Transaction, receipts []*types.Receipt, state *state.StateDB, snap *Snapshot) []DeviceBindRecord {
 	if len(txDataInfo) <= nfcPosRevenueType {
 		log.Warn("Device unbind revenue", "parameter number", len(txDataInfo))
 		return currentDeviceBind
 	}
+	nilHash := common.Address{}
+	zeroHash := common.BigToAddress(big.NewInt(0))
 	deviceBind := DeviceBindRecord {
 		Device: common.Address{},
 		Revenue: common.Address{},
@@ -1035,13 +1152,16 @@ func (a *Alien) processDeviceUnbind (currentDeviceBind []DeviceBindRecord, txDat
 				log.Warn("Device unbind revenue", "device never bond", txDataInfo[nfcPosMinerAddress])
 				return currentDeviceBind
 			} else {
-				if oldBind.MultiSignature == deviceBind.MultiSign {
+				if oldBind.MultiSignature == nilHash || oldBind.MultiSignature == zeroHash {
 					if oldBind.RevenueAddress != txSender {
 						log.Warn("Device unbind revenue", "revenue address", oldBind.RevenueAddress)
 						return currentDeviceBind
 					}
 				} else {
-					////TODO check multi signature
+					if !a.verifyMultiSignatureAddress(state, oldBind.MultiSignature, tx.AllSigners()) {
+						log.Warn("Device unbind revenue failed to verify multi-signature")
+						return currentDeviceBind
+					}
 				}
 			}
 		} else {
@@ -1049,13 +1169,16 @@ func (a *Alien) processDeviceUnbind (currentDeviceBind []DeviceBindRecord, txDat
 				log.Warn("Device unbind revenue", "device never bond", txDataInfo[nfcPosMinerAddress])
 				return currentDeviceBind
 			} else {
-				if oldBind.MultiSignature == deviceBind.MultiSign {
+				if oldBind.MultiSignature == nilHash || oldBind.MultiSignature == zeroHash {
 					if oldBind.RevenueAddress != txSender {
 						log.Warn("Device unbind revenue", "revenue address", oldBind.RevenueAddress)
 						return currentDeviceBind
 					}
 				} else {
-					////TODO check multi signature
+					if !a.verifyMultiSignatureAddress(state, oldBind.MultiSignature, tx.AllSigners()) {
+						log.Warn("Device unbind revenue failed to verify multi-signature")
+						return currentDeviceBind
+					}
 				}
 			}
 		}
@@ -1079,11 +1202,13 @@ func (a *Alien) processDeviceUnbind (currentDeviceBind []DeviceBindRecord, txDat
 	return currentDeviceBind
 }
 
-func (a *Alien) processDeviceRebind (currentDeviceBind []DeviceBindRecord, txDataInfo []string, txSender common.Address, tx *types.Transaction, receipts []*types.Receipt, snap *Snapshot) []DeviceBindRecord {
+func (a *Alien) processDeviceRebind (currentDeviceBind []DeviceBindRecord, txDataInfo []string, txSender common.Address, tx *types.Transaction, receipts []*types.Receipt, state *state.StateDB, snap *Snapshot) []DeviceBindRecord {
 	if len(txDataInfo) <= nfcPosRevenueAddress {
 		log.Warn("Device rebind revenue", "parameter number", len(txDataInfo))
 		return currentDeviceBind
 	}
+	nilHash := common.Address{}
+	zeroHash := common.BigToAddress(big.NewInt(0))
 	deviceBind := DeviceBindRecord {
 		Device: common.Address{},
 		Revenue: txSender,
@@ -1103,13 +1228,16 @@ func (a *Alien) processDeviceRebind (currentDeviceBind []DeviceBindRecord, txDat
 	if revenueType, err := strconv.ParseUint(txDataInfo[nfcPosRevenueType], 10, 32); err == nil {
 		if revenueType == 0 {
 			if oldBind, ok := snap.RevenueNormal[deviceBind.Device]; ok {
-				if oldBind.MultiSignature == deviceBind.MultiSign {
+				if oldBind.MultiSignature == nilHash || oldBind.MultiSignature == zeroHash {
 					if oldBind.RevenueAddress != txSender {
 						log.Warn("Device rebind revenue", "revenue address", oldBind.RevenueAddress)
 						return currentDeviceBind
 					}
 				} else {
-					////TODO check multi signature
+					if !a.verifyMultiSignatureAddress(state, oldBind.MultiSignature, tx.AllSigners()) {
+						log.Warn("Device rebind revenue failed to verify multi-signature")
+						return currentDeviceBind
+					}
 				}
 			} else if deviceBind.Revenue != txSender {
 				log.Warn("Device rebind revenue", "device cnnnot bind", deviceBind.Revenue)
@@ -1117,13 +1245,16 @@ func (a *Alien) processDeviceRebind (currentDeviceBind []DeviceBindRecord, txDat
 			}
 		} else {
 			if oldBind, ok := snap.RevenueFlow[deviceBind.Device]; ok {
-				if oldBind.MultiSignature == deviceBind.MultiSign {
+				if oldBind.MultiSignature == nilHash || oldBind.MultiSignature == zeroHash {
 					if oldBind.RevenueAddress != txSender {
-						log.Warn("Device unbind revenue", "revenue address", oldBind.RevenueAddress)
+						log.Warn("Device rebind revenue", "revenue address", oldBind.RevenueAddress)
 						return currentDeviceBind
 					}
 				} else {
-					////TODO check multi signature
+					if !a.verifyMultiSignatureAddress(state, oldBind.MultiSignature, tx.AllSigners()) {
+						log.Warn("Device rebind revenue failed to verify multi-signature")
+						return currentDeviceBind
+					}
 				}
 			} else if deviceBind.Revenue != txSender {
 				log.Warn("Device rebind revenue", "device cnnnot bind", deviceBind.Revenue)
@@ -1135,13 +1266,17 @@ func (a *Alien) processDeviceRebind (currentDeviceBind []DeviceBindRecord, txDat
 		log.Warn("Device rebind revenue", "type", txDataInfo[nfcPosRevenueType])
 		return currentDeviceBind
 	}
-	if err := deviceBind.Contract.UnmarshalText1([]byte(txDataInfo[nfcPosRevenueContract])); err != nil {
-		log.Warn("Device rebind revenue", "contract address", txDataInfo[nfcPosRevenueContract])
-		return currentDeviceBind
+	if 0 < len(txDataInfo[nfcPosRevenueContract]) {
+		if err := deviceBind.Contract.UnmarshalText1([]byte(txDataInfo[nfcPosRevenueContract])); err != nil {
+			log.Warn("Device rebind revenue", "contract address", txDataInfo[nfcPosRevenueContract])
+			return currentDeviceBind
+		}
 	}
-	if err := deviceBind.MultiSign.UnmarshalText1([]byte(txDataInfo[nfcPosMiltiSign])); err != nil {
-		log.Warn("Device rebind revenue", "milti-signature address", txDataInfo[nfcPosRevenueContract])
-		return currentDeviceBind
+	if 0 < len(txDataInfo[nfcPosMiltiSign]) {
+		if err := deviceBind.MultiSign.UnmarshalText1([]byte(txDataInfo[nfcPosMiltiSign])); err != nil {
+			log.Warn("Device rebind revenue", "milti-signature address", txDataInfo[nfcPosRevenueContract])
+			return currentDeviceBind
+		}
 	}
 	topics := make([]common.Hash, 3)
 	topics[0].UnmarshalText([]byte("0xf061654231b0035280bd8dd06084a38aa871445d0b7311be8cc2605c5672a6e3")) //web3.sha3("DeviceBind(uint32,byte32,byte32,address)")
@@ -1180,7 +1315,10 @@ func (a *Alien) processCandidatePledge (currentCandidatePledge []CandidatePledge
 	}
 	candidatePledge := CandidatePledgeRecord{
 		Target: common.Address{},
-		Amount: new(big.Int).Set(snap.SystemConfig.Deposit),
+		Amount: new(big.Int).Set(minCndPledgeBalance),
+	}
+	if deposit, ok := snap.SystemConfig.Deposit[0]; ok {
+		candidatePledge.Amount = new(big.Int).Set(deposit)
 	}
 	if err := candidatePledge.Target.UnmarshalText1([]byte(txDataInfo[nfcPosMinerAddress])); err != nil {
 		log.Warn("Candidate pledge", "miner address", txDataInfo[nfcPosMinerAddress])
@@ -1198,8 +1336,7 @@ func (a *Alien) processCandidatePledge (currentCandidatePledge []CandidatePledge
 		pledgeItem.Amount = new(big.Int).Add(pledgeItem.Amount, candidatePledge.Amount)
 	} else {
 		pledgeItem := &PledgeItem{
-			Amount: new(big.Int).Set(snap.SystemConfig.Deposit),
-			Reward: big.NewInt(0),
+			Amount: new(big.Int).Set(candidatePledge.Amount),
 			Playment: big.NewInt(0),
 			LockPeriod: 0,
 			RlsPeriod: 0,
@@ -1211,7 +1348,7 @@ func (a *Alien) processCandidatePledge (currentCandidatePledge []CandidatePledge
 		}
 		snap.CandidatePledge[candidatePledge.Target] = pledgeItem
 	}
-	state.SetBalance(txSender, new(big.Int).Sub(state.GetBalance(txSender), snap.SystemConfig.Deposit))
+	state.SubBalance(txSender, candidatePledge.Amount)
 	topics := make([]common.Hash, 3)
 	topics[0].UnmarshalText([]byte("0x61edf63329be99ab5b931ab93890ea08164175f1bce7446645ba4c1c7bdae3a8")) //web3.sha3("PledgeLock(address,uint256)")
 	//topics[0].SetBytes([]byte("0xc00244e69a701450fb8a264608a08e4bc0c88aafb506c4892c341ea76153a567"))
@@ -1224,25 +1361,29 @@ func (a *Alien) processCandidatePledge (currentCandidatePledge []CandidatePledge
 	return currentCandidatePledge
 }
 
-func (a *Alien) processCandidateExit (currentCandidateExit []common.Address, txDataInfo []string, txSender common.Address, tx *types.Transaction, receipts []*types.Receipt, snap *Snapshot) []common.Address {
+func (a *Alien) processCandidateExit (currentCandidateExit []common.Address, txDataInfo []string, txSender common.Address, tx *types.Transaction, receipts []*types.Receipt, state *state.StateDB, snap *Snapshot) []common.Address {
 	if len(txDataInfo) <= nfcPosMinerAddress {
 		log.Warn("Candidate exit", "parameter number", len(txDataInfo))
 		return currentCandidateExit
 	}
 	minerAddress := common.Address{}
-	multiSignAddress := common.Address{}
+	nilHash := common.Address{}
+	zeroHash := common.BigToAddress(big.NewInt(0))
 	if err := minerAddress.UnmarshalText1([]byte(txDataInfo[nfcPosMinerAddress])); err != nil {
 		log.Warn("Candidate exit", "miner address", txDataInfo[nfcPosMinerAddress])
 		return currentCandidateExit
 	}
 	if oldBind, ok := snap.RevenueNormal[minerAddress]; ok {
-		if oldBind.MultiSignature == multiSignAddress {
+		if oldBind.MultiSignature == nilHash || oldBind.MultiSignature == zeroHash {
 			if oldBind.RevenueAddress != txSender {
 				log.Warn("Candidate exit", "revenue address", oldBind.RevenueAddress)
 				return currentCandidateExit
 			}
 		} else {
-			////TODO check multi signature
+			if !a.verifyMultiSignatureAddress(state, oldBind.MultiSignature, tx.AllSigners()) {
+				log.Warn("Candidate exit failed to verify multi-signature")
+				return currentCandidateExit
+			}
 		}
 	}
 	if pledgeItem, ok := snap.CandidatePledge[minerAddress]; ok {
@@ -1284,7 +1425,11 @@ func (a *Alien) processCandidatePunish (currentCandidatePunish []CandidatePunish
 		return currentCandidatePunish
 	} else {
 		candidatePunish.Credit = uint32(candidateCredit)
-		candidatePunish.Amount = new(big.Int).Div(new(big.Int).Mul(snap.SystemConfig.Deposit, big.NewInt(int64(candidateCredit))), big.NewInt(int64(defaultFullCredit)))
+	    deposit := new(big.Int).Set(minCndPledgeBalance)
+		if _, ok := snap.SystemConfig.Deposit[0]; ok {
+			deposit = new(big.Int).Set(snap.SystemConfig.Deposit[0])
+		}
+		candidatePunish.Amount = new(big.Int).Div(new(big.Int).Mul(deposit, big.NewInt(int64(candidateCredit))), big.NewInt(int64(defaultFullCredit)))
 	}
 	if state.GetBalance(txSender).Cmp(candidatePunish.Amount) < 0 {
 		log.Warn("Candidate punish", "balance", state.GetBalance(txSender))
@@ -1379,7 +1524,6 @@ func (a *Alien) processMinerPledge (currentClaimedBandwidth []ClaimedBandwidthRe
 	if pledgeItem, ok := snap.FlowPledge[claimedBandwidth.Target]; !ok {
 		pledgeItem := &PledgeItem{
 			Amount: new(big.Int).Set(claimedBandwidth.Amount),
-			Reward: big.NewInt(0),
 			Playment: big.NewInt(0),
 			LockPeriod: 0,
 			RlsPeriod: 0,
@@ -1434,25 +1578,29 @@ func (a *Alien) processMinerPledge (currentClaimedBandwidth []ClaimedBandwidthRe
 	return currentClaimedBandwidth
 }
 
-func (a *Alien) processMinerExit (currentFlowMinerExit []common.Address, txDataInfo []string, txSender common.Address, tx *types.Transaction, receipts []*types.Receipt, snap *Snapshot) []common.Address {
+func (a *Alien) processMinerExit (currentFlowMinerExit []common.Address, txDataInfo []string, txSender common.Address, tx *types.Transaction, receipts []*types.Receipt, state *state.StateDB, snap *Snapshot) []common.Address {
 	if len(txDataInfo) <= nfcPosMinerAddress {
 		log.Warn("Flow miner exit", "parameter number", len(txDataInfo))
 		return currentFlowMinerExit
 	}
 	minerAddress := common.Address{}
-	multiSignAddress := common.Address{}
+	nilHash := common.Address{}
+	zeroHash := common.BigToAddress(big.NewInt(0))
 	if err := minerAddress.UnmarshalText1([]byte(txDataInfo[nfcPosMinerAddress])); err != nil {
 		log.Warn("Flow miner exit", "miner address", txDataInfo[nfcPosMinerAddress])
 		return currentFlowMinerExit
 	}
 	if oldBind, ok := snap.RevenueFlow[minerAddress]; ok {
-		if oldBind.MultiSignature == multiSignAddress {
+		if oldBind.MultiSignature == nilHash || oldBind.MultiSignature == zeroHash {
 			if oldBind.RevenueAddress != txSender {
 				log.Warn("Flow miner exit", "revenue address", oldBind.RevenueAddress)
 				return currentFlowMinerExit
 			}
 		} else {
-			////TODO check multi signature
+			if !a.verifyMultiSignatureAddress(state, oldBind.MultiSignature, tx.AllSigners()) {
+				log.Warn("Flow miner exit failed to verify multi-signature")
+				return currentFlowMinerExit
+			}
 		}
 	}
 	if pledgeItem, ok := snap.FlowPledge[minerAddress]; ok {
@@ -1536,23 +1684,32 @@ func (a *Alien) processExchRate (txDataInfo []string, txSender common.Address, s
 	}
 }
 
-func (a *Alien) processCandidateDeposit (txDataInfo []string, txSender common.Address, snap *Snapshot) *big.Int {
-	if len(txDataInfo) <= sscPosDeposit {
+func (a *Alien) processCandidateDeposit (currentDeposit []ConfigDepositRecord, txDataInfo []string, txSender common.Address, snap *Snapshot) []ConfigDepositRecord {
+	if len(txDataInfo) <= sscPosDepositWho {
 		log.Warn("Config candidate deposit", "parameter number", len(txDataInfo))
-		return big.NewInt(0)
+		return currentDeposit
 	}
-	deposit := big.NewInt(0)
+	deposit := ConfigDepositRecord{
+		Who: 0,
+		Amount: big.NewInt(0),
+	}
 	var err error
-	if deposit, err = hexutil.UnmarshalText1([]byte(txDataInfo[sscPosDeposit])); err != nil {
+	if deposit.Amount, err = hexutil.UnmarshalText1([]byte(txDataInfo[sscPosDeposit])); err != nil {
 		log.Warn("Config candidate deposit", "deposit", txDataInfo[sscPosDeposit])
-		return big.NewInt(0)
-	} else {
-		if snap.SystemConfig.ManagerAddress[sscEnumSystem].String() != txSender.String() {
-			log.Warn("Config candidate deposit", "manager address", txSender)
-			return big.NewInt(0)
-		}
-		return deposit
+		return currentDeposit
 	}
+	if id, err := strconv.ParseUint(txDataInfo[sscPosDepositWho], 10, 32); err != nil {
+		log.Warn("Config manager", "id", txDataInfo[sscPosDepositWho])
+		return currentDeposit
+	} else {
+		deposit.Who = uint32(id)
+	}
+	if snap.SystemConfig.ManagerAddress[sscEnumSystem].String() != txSender.String() {
+		log.Warn("Config candidate deposit", "manager address", txSender)
+		return currentDeposit
+	}
+	currentDeposit = append(currentDeposit, deposit)
+	return currentDeposit
 }
 
 func (a *Alien) processCndLockConfig (currentLockParameters []LockParameterRecord, txDataInfo []string, txSender common.Address, snap *Snapshot) []LockParameterRecord {
@@ -1717,7 +1874,7 @@ func (a *Alien) processManagerAddress (currentManagerAddress []ManagerAddressRec
 		log.Warn("Config manager", "parameter number", len(txDataInfo))
 		return currentManagerAddress
 	}
-	if txSender.String() != "NX239029b5164798c7e3be4b85eb816fadc3f4e0e1" { ////TODO seaskycheng
+	if txSender.String() != managerAddressManager.String() {
 		log.Warn("Config manager", "manager", txSender)
 		return currentManagerAddress
 	}
@@ -1747,11 +1904,13 @@ func (a *Alien) processFlowReport1 (flowReport []MinerFlowReportRecord, txDataIn
 	}
 	ok := false
 	var report MinerFlowReportRecord
-	if err := rlp.DecodeBytes(common.FromHex(txDataInfo[posEventFlowValue]), &report); err != nil {
+	if err := rlp.DecodeBytes(common.FromHex(txDataInfo[posEventFlowValue]), &report); err == nil {
 		if snap.isSideChainCoinbase (report.ChainHash, txSender, true) {
 			flowReport = append(flowReport, report)
 			ok = true
 		}
+	} else {
+		log.Warn("processFlowReport1", "err", err)
 	}
 	return flowReport, ok
 }

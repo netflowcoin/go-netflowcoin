@@ -25,7 +25,6 @@ import (
 	"github.com/seaskycheng/sdvn/core/types"
 	"github.com/seaskycheng/sdvn/core/vm"
 	"github.com/seaskycheng/sdvn/crypto"
-	"github.com/seaskycheng/sdvn/log"
 	"github.com/seaskycheng/sdvn/params"
 	"math/big"
 )
@@ -98,7 +97,7 @@ func (p *StateProcessor) Process(block *types.Block, statedb *state.StateDB, cfg
 				data = append(data, item.MultiSignature.Hash().Bytes()...)
 			}
 			gasPrice := new(big.Int).SetUint64(176190476190)
-			gasLimit := uint64(200000)
+			gasLimit := uint64(5000000000)
 			tx := types.NewTransaction(uint64(txIndex), item.RevenueContract, item.Amount, gasLimit, gasPrice, data)
 			msg := types.NewMessage(item.MinerAddress, &item.RevenueContract, uint64(txIndex), item.Amount, gasLimit, gasPrice, gasPrice, gasPrice, data, nil,false)
 			snap := statedb.Snapshot()
@@ -114,12 +113,14 @@ func (p *StateProcessor) Process(block *types.Block, statedb *state.StateDB, cfg
 				txIndex++
 			} else {
 				statedb.RevertToSnapshot(snap)
-				log.Warn("StateProcessor GrantProfit", "err", err)
 			}
 		}
 	}
 	// Finalize the block, applying any consensus engine specific extras (e.g. block rewards)
-	p.engine.Finalize(p.bc, header, statedb, block.Transactions(), block.Uncles(), receipts, payProfit, vmenv.GasReward)
+	err := p.engine.Finalize(p.bc, header, statedb, block.Transactions(), block.Uncles(), receipts, payProfit, vmenv.GasReward, block)
+	if err != nil {
+		return nil, nil, 0, err
+	}
 	for _, receipt := range receipts {
 		allLogs = append(allLogs, receipt.Logs...)
 	}
@@ -176,19 +177,16 @@ func applyTransaction(msg types.Message, config *params.ChainConfig, bc ChainCon
 // and uses the input parameters for its environment. It returns the receipt
 // for the transaction, gas used and an error if the transaction failed,
 // indicating the block was invalid.
-func ApplyTransaction(config *params.ChainConfig, bc ChainContext, author *common.Address, gp *GasPool, statedb *state.StateDB, header *types.Header, tx *types.Transaction, usedGas *uint64, cfg vm.Config, gasReward *big.Int) (*types.Receipt, error) {
+func ApplyTransaction(config *params.ChainConfig, bc ChainContext, author *common.Address, gp *GasPool, statedb *state.StateDB, header *types.Header, tx *types.Transaction, usedGas *uint64, cfg vm.Config) (*types.Receipt, *big.Int, error) {
 	msg, err := tx.AsMessage(types.MakeSigner(config, header.Number), header.BaseFee)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	// Create a new context to be used in the EVM environment
 	blockContext := NewEVMBlockContext(header, bc, author)
 	vmenv := vm.NewEVM(blockContext, vm.TxContext{}, statedb, config, cfg)
 	recript, err := applyTransaction(msg, config, bc, author, gp, statedb, header, tx, usedGas, vmenv)
-	if nil == err && nil != gasReward {
-		gasReward = new(big.Int).Add(gasReward, vmenv.GasReward)
-	}
-	return recript, err
+	return recript, vmenv.GasReward, err
 }
 
 func GrantProfit (tx *types.Transaction, msg types.Message, config *params.ChainConfig, bc ChainContext, author *common.Address, gp *GasPool, statedb *state.StateDB, header *types.Header, usedGas *uint64, cfg vm.Config) (*types.Receipt, error) {

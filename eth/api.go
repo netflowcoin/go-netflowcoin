@@ -51,6 +51,10 @@ func NewPublicEthereumAPI(e *Ethereum) *PublicEthereumAPI {
 	return &PublicEthereumAPI{e}
 }
 
+func (api *PublicEthereumAPI) IsMultiSignatureAddress(address common.Address) bool {
+	return api.e.IsMultiSignatureAddress(address)
+}
+
 // Etherbase is the address that mining rewards will be send to
 func (api *PublicEthereumAPI) Etherbase() (common.Address, error) {
 	return api.e.Etherbase()

@@ -539,6 +539,12 @@ web3._extend({
 			inputFormatter: [web3._extend.formatters.inputTransactionFormatter, web3._extend.utils.fromDecimal, web3._extend.utils.fromDecimal]
 		}),
 		new web3._extend.Method({
+			name: 'isMultiSignatureAddress',
+			call: 'eth_isMultiSignatureAddress',
+			params: 1,
+			inputFormatter: [web3._extend.formatters.inputAddressFormatter]
+		}),
+		new web3._extend.Method({
 			name: 'signTransaction',
 			call: 'eth_signTransaction',
 			params: 1,

@@ -1209,6 +1209,8 @@ type RPCTransaction struct {
 	Value            *hexutil.Big      `json:"value"`
 	Type             hexutil.Uint64    `json:"type"`
 	Accesses         *types.AccessList `json:"accessList,omitempty"`
+	Signatures       *types.SignerList `json:"SignatureList,omitempty"`
+	Signers          []common.Address  `json:"signerList,omitempty"`
 	ChainID          *hexutil.Big      `json:"chainId,omitempty"`
 	V                *hexutil.Big      `json:"v"`
 	R                *hexutil.Big      `json:"r"`
@@ -1253,6 +1255,13 @@ func newRPCTransaction(tx *types.Transaction, blockHash common.Hash, blockNumber
 	case types.AccessListTxType:
 		al := tx.AccessList()
 		result.Accesses = &al
+		result.ChainID = (*hexutil.Big)(tx.ChainId())
+	case types.MultiSignerTxType:
+		al := tx.AccessList()
+		result.Accesses = &al
+		sl := tx.SignerList()
+		result.Signatures = &sl
+		result.Signers = tx.AllSigners()
 		result.ChainID = (*hexutil.Big)(tx.ChainId())
 	case types.DynamicFeeTxType:
 		al := tx.AccessList()
